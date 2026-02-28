@@ -1,35 +1,23 @@
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
 from twilio.twiml.voice_response import VoiceResponse, Connect, Stream
 import json
 import base64
 import asyncio
 import logging
+from collections import deque
 from datetime import datetime
 
 app = FastAPI()
 
 # --- Logging Setup ---
-# We keep a list of active log watcher WebSockets
-log_watchers = set()
+# Store the last 1000 logs in memory
+log_history = deque(maxlen=1000)
 
-class WebsocketLogHandler(logging.Handler):
+class MemoryLogHandler(logging.Handler):
     def emit(self, record):
         log_entry = self.format(record)
-        # We need to send this to all connected log watchers
-        # Since emit is synchronous and websockets are async, we use the event loop
-        if log_watchers:
-            try:
-                loop = asyncio.get_running_loop()
-                for watcher in list(log_watchers):
-                    loop.create_task(self.send_log(watcher, log_entry))
-            except RuntimeError:
-                pass # No running event loop
-                
-    async def send_log(self, websocket: WebSocket, message: str):
-        try:
-            await websocket.send_text(message)
-        except Exception:
-            log_watchers.discard(websocket)
+        log_history.append(log_entry)
 
 # Configure the logger
 logger = logging.getLogger("hackillinois")
@@ -40,25 +28,36 @@ console_handler = logging.StreamHandler()
 console_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 logger.addHandler(console_handler)
 
-# WebSocket handler
-ws_handler = WebsocketLogHandler()
-ws_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-logger.addHandler(ws_handler)
+# Memory handler for the HTTP endpoint
+memory_handler = MemoryLogHandler()
+memory_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logger.addHandler(memory_handler)
 
-@app.websocket("/logs")
-async def websocket_logs(websocket: WebSocket):
-    """Live streaming endpoint for logs."""
-    await websocket.accept()
-    log_watchers.add(websocket)
-    try:
-        await websocket.send_text("Connected to live logs stream.")
-        while True:
-            # Keep connection alive
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        log_watchers.discard(websocket)
-    except Exception as e:
-        log_watchers.discard(websocket)
+@app.get("/logs", response_class=HTMLResponse)
+async def view_logs():
+    """Simple HTTP endpoint to view the last 1000 logs. Auto-refreshes every 2 seconds."""
+    logs_str = "\n".join(log_history)
+    html_content = f"""
+    <html>
+        <head>
+            <title>Live Logs</title>
+            <meta http-equiv="refresh" content="2">
+            <style>
+                body {{ background-color: #1e1e1e; color: #00ff00; font-family: monospace; padding: 20px; }}
+                pre {{ white-space: pre-wrap; word-wrap: break-word; }}
+            </style>
+        </head>
+        <body>
+            <h2>Backend Logs (Auto-refreshing every 2s)</h2>
+            <pre>{logs_str if logs_str else "No logs yet..."}</pre>
+            <script>
+                // Auto-scroll to the bottom
+                window.scrollTo(0, document.body.scrollHeight);
+            </script>
+        </body>
+    </html>
+    """
+    return html_content
 
 # --- App Endpoints ---
 
