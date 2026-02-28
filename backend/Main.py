@@ -5,6 +5,8 @@ import json
 import base64
 import asyncio
 import logging
+import os
+import websockets
 from collections import deque
 from datetime import datetime
 
@@ -117,47 +119,73 @@ async def voice(request: Request):
 
 @app.websocket("/media-stream")
 async def handle_media_stream(websocket: WebSocket):
-    """Handle the real-time audio stream from Twilio and echo it back after 3 seconds."""
+    """Bidirectional proxy between Twilio and Modal AI pipeline."""
     await websocket.accept()
     logger.info("Twilio connected to /media-stream WebSocket")
     
     stream_sid = None
     
+    # URL of your Modal app (can be overridden via environment variables)
+    MODAL_WS_URL = os.environ.get("MODAL_WS_URL", "wss://vignesh--hackillinois-voice-pipeline-asgi-app.modal.run/ai-stream")
+    
     try:
-        while True:
-            message = await websocket.receive_text()
-            data = json.loads(message)
+        # Connect to Modal
+        async with websockets.connect(MODAL_WS_URL) as modal_ws:
+            logger.info(f"Connected to Modal AI Pipeline at {MODAL_WS_URL}")
             
-            if data['event'] == 'start':
-                stream_sid = data['start']['streamSid']
-                logger.info(f"Stream started: {stream_sid}")
-                
-            elif data['event'] == 'media':
-                payload = data['media']['payload']
-                
-                # Test: Echo back the audio after a small delay
-                async def echo_after_delay(p, sid):
-                    await asyncio.sleep(3)
-                    echo_message = {
-                        "event": "media",
-                        "streamSid": sid,
-                        "media": {
-                            "payload": p
-                        }
-                    }
-                    try:
-                        await websocket.send_text(json.dumps(echo_message))
-                        logger.debug(f"Echoed audio chunk for stream {sid}")
-                    except Exception as e:
-                        logger.error(f"Error sending echo: {e}")
+            async def receive_from_twilio():
+                nonlocal stream_sid
+                try:
+                    while True:
+                        message = await websocket.receive_text()
+                        data = json.loads(message)
+                        
+                        if data['event'] == 'start':
+                            stream_sid = data['start']['streamSid']
+                            logger.info(f"Stream started: {stream_sid}")
+                            await modal_ws.send(message)
+                            
+                        elif data['event'] == 'media':
+                            await modal_ws.send(message)
+                            
+                        elif data['event'] == 'stop':
+                            logger.info("Stream stopped by Twilio")
+                            await modal_ws.send(message)
+                            break
+                except WebSocketDisconnect:
+                    logger.warning("Twilio disconnected")
+                except Exception as e:
+                    logger.error(f"Error receiving from Twilio: {e}")
 
-                # Start the echo task
-                asyncio.create_task(echo_after_delay(payload, stream_sid))
-                
-            elif data['event'] == 'stop':
-                logger.info("Stream stopped by Twilio")
-                break
-                
+            async def receive_from_modal():
+                try:
+                    while True:
+                        message = await modal_ws.recv()
+                        data = json.loads(message)
+                        
+                        # Add streamSid to the media event sent back to Twilio
+                        if data.get("event") == "media" and stream_sid:
+                            data["streamSid"] = stream_sid
+                            
+                        await websocket.send_text(json.dumps(data))
+                except websockets.exceptions.ConnectionClosed:
+                    logger.warning("Modal disconnected")
+                except Exception as e:
+                    logger.error(f"Error receiving from Modal: {e}")
+
+            # Run both tasks concurrently and stop when either finishes
+            task1 = asyncio.create_task(receive_from_twilio())
+            task2 = asyncio.create_task(receive_from_modal())
+            
+            done, pending = await asyncio.wait(
+                [task1, task2],
+                return_when=asyncio.FIRST_COMPLETED
+            )
+            
+            # Cancel any pending tasks to ensure clean up
+            for task in pending:
+                task.cancel()
+            
     except WebSocketDisconnect:
         logger.warning("Twilio disconnected from /media-stream WebSocket")
     except Exception as e:
