@@ -41,12 +41,22 @@ jobs:
             source venv/bin/activate
             pip install -r requirements.txt
 
-            # Restart the service
-            pkill -f "uvicorn Main:app" || true
-            
-            # Use setsid to fully detach the process from the SSH session
-            # This prevents the process from being killed when the SSH connection closes (Exit code 143)
-            setsid venv/bin/python3 -m uvicorn Main:app --host 0.0.0.0 --port 8000 > app.log 2>&1 < /dev/null &
-            
-            # Brief sleep to ensure the process starts before the script finishes
-            sleep 2
+            # Create a systemd service
+            cat > /etc/systemd/system/hackillinois.service << 'EOF'
+            [Unit]
+            Description=HackIllinois Backend
+            After=network.target
+
+            [Service]
+            WorkingDirectory=/root/HackIllinois/backend
+            ExecStart=/root/HackIllinois/backend/venv/bin/python3 -m uvicorn Main:app --host 0.0.0.0 --port 8000
+            Restart=always
+            RestartSec=3
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            systemctl daemon-reload
+            systemctl restart hackillinois
+            systemctl enable hackillinois
