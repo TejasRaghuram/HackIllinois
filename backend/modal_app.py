@@ -46,20 +46,18 @@ voice_image = (
     .apt_install("ffmpeg", "wget", "git", "curl")
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})  # Modal pattern: fast HF downloads
     .pip_install(
-        # vLLM bundles torch — do NOT install torch separately to avoid conflicts
+        # vLLM — let it pull its own torch + transformers (no manual pins!)
         "vllm==0.8.5.post1",
-        # Pin transformers to known-good range for this vLLM version
-        "transformers>=4.45,<4.48",
         # STT
         "faster-whisper>=1.1.0",
-        # Audio (torchaudio must match the torch version vLLM installs)
+        # Audio
         "torchaudio",
         "numpy<2.0",
         # Web framework + HTTP client
         "fastapi==0.115.5",
         "uvicorn[standard]",
         "httpx",
-        # Fast HF downloads (matches Modal's pattern)
+        # Fast HF downloads
         "hf_transfer",
         "huggingface_hub[hf-xet]",
     )
