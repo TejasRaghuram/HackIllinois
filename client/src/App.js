@@ -1,7 +1,10 @@
 import './App.css';
-import { useState, useEffect } from 'react';
+import 'mapbox-gl/dist/mapbox-gl.css';
+import { useState, useEffect, useRef } from 'react';
+import mapboxgl from 'mapbox-gl';
 
 function App() {
+
   const [date, setDate] = useState(new Date());
 
   useEffect(() => {
@@ -23,6 +26,24 @@ function App() {
     hour12: false
   };
 
+  const mapContainerRef = useRef(null);
+  const mapRef = useRef(null);
+
+  mapboxgl.accessToken = process.env.REACT_APP_MAPBOXGL_API_KEY;
+
+  const URBANA_CENTER = [-88.211105, 40.113159];
+
+  useEffect(() => {
+    if (mapRef.current) return;
+
+    mapRef.current = new mapboxgl.Map({
+      container: mapContainerRef.current,
+      style: 'mapbox://styles/mapbox/streets-v11',
+      center: URBANA_CENTER,
+      zoom: 13
+    });
+  }, []);
+
   return (
     <div id="app">
       <header>
@@ -34,7 +55,12 @@ function App() {
       </header>
       <div id="content">
         <div id="main">
-          <div id="map"></div>
+          <div id="map">
+            <div
+              ref={mapContainerRef}
+              style={{ height: '100%', width: '100%' }}
+            />
+          </div>
           <div id="calls"></div>
         </div>
         <div id="info"></div>

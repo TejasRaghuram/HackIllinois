@@ -54,8 +54,12 @@ header {
 #map {
   height: 500px;
   margin-right: 5px;
-  background-color: magenta;
   flex: 1;
+  border-style: solid;
+  border-radius: 5px;
+  border-width: 2px;
+  border-color: #aaaaaa;
+  overflow: hidden;
 }
 
 #calls {
