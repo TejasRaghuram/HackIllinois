@@ -197,8 +197,8 @@ async def handle_media_stream(websocket: WebSocket):
                                     audio=types.Blob(data=pcm_16k, mime_type="audio/pcm;rate=16000")
                                 )
                                 audio_chunks_sent += 1
-                                # Log every 100 chunks (~5 seconds of audio) to confirm flow
-                                if audio_chunks_sent % 100 == 0:
+                                # Log every 500 chunks (~25 seconds of audio) to confirm flow
+                                if audio_chunks_sent % 500 == 0:
                                     logger.info(f"Sent {audio_chunks_sent} audio chunks to Gemini")
                             except Exception as e:
                                 logger.error(f"Error sending audio to Gemini: {e}")
@@ -220,7 +220,9 @@ async def handle_media_stream(websocket: WebSocket):
                                 model_turn = response.server_content.model_turn
                                 for part in model_turn.parts:
                                     if part.text:
-                                        logger.info(f"Assistant: {part.text}")
+                                        # Only log if it's not just a thinking/internal thought
+                                        if not part.text.startswith("**"):
+                                            logger.info(f"Assistant: {part.text}")
                                     if part.inline_data and part.inline_data.data:
                                         # Gemini returns 24kHz PCM
                                         pcm_24k = part.inline_data.data
@@ -242,7 +244,7 @@ async def handle_media_stream(websocket: WebSocket):
                                         if stream_sid:
                                             media_msg["streamSid"] = stream_sid
                                         
-                                        logger.debug("Sending audio chunk to Twilio")
+                                        # logger.debug("Sending audio chunk to Twilio")
                                         await websocket.send_text(json.dumps(media_msg))
                             
                             # Handle interruptions
@@ -260,9 +262,10 @@ async def handle_media_stream(websocket: WebSocket):
                             # Handle output transcription (what the model said)
                             if response.server_content and hasattr(response.server_content, 'output_transcription') and response.server_content.output_transcription:
                                 if response.server_content.output_transcription.text:
-                                    logger.info(f"Assistant transcript: {response.server_content.output_transcription.text}")
+                                    # logger.info(f"Assistant transcript: {response.server_content.output_transcription.text}")
+                                    pass
 
-                        logger.debug("session.receive() loop ended, re-entering...")
+                        # logger.debug("session.receive() loop ended, re-entering...")
                 except asyncio.CancelledError:
                     pass
                 except Exception as e:
