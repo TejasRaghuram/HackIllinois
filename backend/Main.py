@@ -126,7 +126,7 @@ async def voice(request: Request):
 
 # Initialize Gemini Client
 try:
-    gemini_client = genai.Client()
+    gemini_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 except Exception as e:
     logger.error(f"Failed to initialize Gemini Client: {e}")
     gemini_client = None
