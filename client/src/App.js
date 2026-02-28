@@ -1,6 +1,28 @@
 import './App.css';
+import { useState, useEffect } from 'react';
 
 function App() {
+  const [date, setDate] = useState(new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDate(new Date());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const format = {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  };
+
   return (
     <div id="app">
       <header>
@@ -8,7 +30,7 @@ function App() {
           <img/>
           <p>HackIllinois</p>
         </div>
-        <p>Saturday, February 28, 2026 00:00:00</p>
+        <p>{date.toLocaleString("en-US", format).replace(/\bat\b/g, "\u00a0")}</p>
       </header>
       <div id="content">
         <div id="main">
