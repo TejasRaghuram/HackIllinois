@@ -1,97 +1,37 @@
-"""
-Voice Pipeline on Modal — Verified Against Official Modal Examples
-===================================================================
-Verified against:
-  - modal-labs/quillman (Moshi voice chatbot)
-  - modal-projects/open-source-av-ragbot (low-latency voice RAGbot)
-  - modal-labs/modal-examples vllm_inference.py
-
-Key patterns from Modal's production code:
-  1. nvidia/cuda base image with cudnn (not debian_slim)
-  2. vLLM as subprocess on a SEPARATE port from the ASGI app
-  3. Modal Volumes for weight caching + compilation artifacts
-  4. HF_HUB_ENABLE_HF_TRANSFER=1 for fast model downloads
-  5. Don't pipe subprocess stderr to PIPE (causes deadlock)
-
-Architecture: Single-container for hackathon. Production = split services.
-"""
-
 import os
 import json
 import base64
 import asyncio
 import modal
 
-# ---------------------------------------------------------------------------
-# Modal App & Volumes
-# ---------------------------------------------------------------------------
-app = modal.App("hackillinois-voice-pipeline")
+app = modal.App("hackillinois-voice")
 
-# Two volumes, matching Modal's own vLLM example pattern:
-#   - One for HuggingFace model weights
-#   - One for vLLM compilation/CUDA graph cache
-weights_volume = modal.Volume.from_name("voice-pipeline-weights", create_if_missing=True)
-vllm_cache_volume = modal.Volume.from_name("voice-pipeline-vllm-cache", create_if_missing=True)
-
-# ---------------------------------------------------------------------------
-# Container Image
-# ---------------------------------------------------------------------------
-# Modal's ragbot uses nvidia/cuda:12.8.0-cudnn-devel-ubuntu22.04 with Python 3.12
-# Their vLLM inference example also uses an nvidia CUDA base.
-# CRITICAL: Do NOT install torch separately — vLLM bundles its own compatible torch.
 voice_image = (
-    modal.Image.from_registry(
-        "nvidia/cuda:12.8.0-cudnn-devel-ubuntu22.04", add_python="3.11"
-    )
+    modal.Image.debian_slim(python_version="3.11")
     .apt_install("ffmpeg", "wget", "git", "curl")
-    .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})  # Modal pattern: fast HF downloads
     .pip_install(
-        # vLLM — let it pull its own torch + transformers (no manual pins!)
-        "vllm==0.8.5.post1",
-        # STT
         "faster-whisper>=1.1.0",
-        # Audio
-        "torchaudio",
+        "torch==2.4.0",
+        "torchaudio==2.4.0",
         "numpy<2.0",
-        # Web framework + HTTP client
         "fastapi==0.115.5",
         "uvicorn[standard]",
         "httpx",
-        # Fast HF downloads
-        "hf_transfer",
-        "huggingface_hub[hf-xet]",
+        "piper-tts",
     )
-    # Download Piper TTS model at image build time
     .run_commands(
         "mkdir -p /models/piper",
         'wget -q -O /models/piper/en_US-lessac-medium.onnx "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx?download=true"',
         'wget -q -O /models/piper/en_US-lessac-medium.onnx.json "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json?download=true"',
-        "pip install piper-tts",
     )
 )
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-# Qwen2.5-3B-Instruct is well-tested with vLLM and fast enough for voice.
-# Modal's ragbot uses Qwen3-4B-Instruct for their voice bot.
-LLM_MODEL = "Qwen/Qwen2.5-3B-Instruct"
 WHISPER_MODEL = "tiny.en"
-
-# CRITICAL: vLLM subprocess must use a DIFFERENT port than Modal's ASGI server.
-# @modal.asgi_app() uses Modal's internal port (typically 8000).
-# We put vLLM on 8001 to avoid conflicts.
-VLLM_PORT = 8001
-
+LLM_MODEL = "Qwen/Qwen2.5-3B-Instruct"
 
 @app.cls(
     image=voice_image,
-    gpu="A100",  # A100 is plenty for a 3B model; cheaper than H200
-    volumes={
-        "/root/.cache/huggingface": weights_volume,    # HF model weights
-        "/root/.cache/vllm": vllm_cache_volume,        # vLLM compilation cache
-    },
-    scaledown_window=300,  # Keep container warm for 5 min (Modal's pattern name)
+    gpu="T4",
     min_containers=1,
 )
 @modal.concurrent(max_inputs=10)
@@ -122,54 +62,7 @@ class VoicePipeline:
             WHISPER_MODEL, device=self.device, compute_type="float16"
         )
 
-        # --- 3. LLM (vLLM as subprocess — Modal's recommended pattern) ---
-        # Modal's own vllm_inference.py launches vLLM via subprocess.Popen
-        # with @modal.web_server. We do the same but on a local-only port
-        # since we already have an ASGI app serving the WebSocket.
-        print(f"Starting vLLM server for {LLM_MODEL} on port {VLLM_PORT}...")
-        import subprocess
-        import sys
-
-        self.vllm_process = subprocess.Popen(
-            [
-                sys.executable, "-m", "vllm.entrypoints.openai.api_server",
-                "--model", LLM_MODEL,
-                "--host", "127.0.0.1",
-                "--port", str(VLLM_PORT),
-                "--max-model-len", "2048",
-                "--gpu-memory-utilization", "0.5",
-                "--enforce-eager",
-                "--dtype", "bfloat16",
-            ],
-            # CRITICAL: Do NOT use stdout=PIPE, stderr=PIPE together.
-            # The pipe buffer fills up and causes a deadlock.
-            # Modal's examples use subprocess.DEVNULL or just let it inherit.
-            stdout=sys.stdout,
-            stderr=sys.stderr,
-        )
-
-        # Poll the health endpoint until vLLM is ready
-        import time
-        import urllib.request
-
-        health_url = f"http://127.0.0.1:{VLLM_PORT}/health"
-        for attempt in range(180):  # Up to 3 minutes for model download + load
-            try:
-                urllib.request.urlopen(health_url)
-                print("vLLM server is ready!")
-                break
-            except Exception:
-                # Check if the process died
-                if self.vllm_process.poll() is not None:
-                    raise RuntimeError(
-                        f"vLLM process exited with code {self.vllm_process.returncode}"
-                    )
-                time.sleep(1)
-        else:
-            self.vllm_process.terminate()
-            raise RuntimeError("vLLM server failed to start within 3 minutes")
-
-        # --- 4. TTS (Piper) ---
+        # --- 3. TTS (Piper) ---
         print("Loading Piper TTS...")
         from piper import PiperVoice
 
@@ -177,19 +70,20 @@ class VoicePipeline:
 
         print("All models loaded. Pipeline ready.")
 
-    @modal.exit()
-    def cleanup(self):
-        """Terminate vLLM subprocess on container shutdown."""
-        if hasattr(self, "vllm_process") and self.vllm_process.poll() is None:
-            self.vllm_process.terminate()
-            self.vllm_process.wait(timeout=10)
-
-    # Modal's QuiLLMan and ragbot both use @modal.asgi_app() to serve FastAPI
     @modal.asgi_app()
     def asgi_app(self):
         from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+        import httpx
 
         web_app = FastAPI()
+
+        try:
+            llm_function = modal.Function.from_name("hackillinois-llm", "serve")
+            llm_url = llm_function.web_url
+            print(f"Discovered LLM Server URL: {llm_url}")
+        except Exception as e:
+            print(f"Warning: Could not discover LLM server URL: {e}")
+            llm_url = "PLACEHOLDER_URL_REPLACE_ME"
 
         @web_app.get("/health")
         async def health():
@@ -203,7 +97,6 @@ class VoicePipeline:
             import audioop
             import numpy as np
             import re
-            import httpx
 
             chat_history = [
                 {
@@ -221,25 +114,28 @@ class VoicePipeline:
             silence_chunks = 0
 
             async def generate_response(user_text: str):
-                """Call the local vLLM OpenAI-compatible API, then TTS the response."""
+                """Call the external vLLM API, then TTS the response."""
                 chat_history.append({"role": "user", "content": user_text})
 
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        f"http://127.0.0.1:{VLLM_PORT}/v1/chat/completions",
-                        json={
-                            "model": LLM_MODEL,
-                            "messages": chat_history,
-                            "max_tokens": 150,
-                            "temperature": 0.7,
-                            "stream": False,
-                        },
-                        timeout=30.0,
-                    )
-                    result = response.json()
-                    full_response = (
-                        result["choices"][0]["message"]["content"].strip()
-                    )
+                try:
+                    async with httpx.AsyncClient() as client:
+                        response = await client.post(
+                            f"{llm_url}/v1/chat/completions",
+                            json={
+                                "model": LLM_MODEL,
+                                "messages": chat_history,
+                                "max_tokens": 150,
+                                "temperature": 0.7,
+                                "stream": False,
+                            },
+                            timeout=30.0,
+                        )
+                        response.raise_for_status()
+                        result = response.json()
+                        full_response = result["choices"][0]["message"]["content"].strip()
+                except Exception as e:
+                    print(f"Error calling LLM at {llm_url}: {e}")
+                    full_response = "I am sorry, I am experiencing technical difficulties."
 
                 print(f"LLM: {full_response}")
                 chat_history.append(

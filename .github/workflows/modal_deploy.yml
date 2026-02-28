@@ -4,7 +4,8 @@ on:
   push:
     branches: [ main ]  # or your default branch name
     paths:
-      - 'backend/modal_app.py'  # Only deploy if this file changes
+      - 'backend/llm_server.py'
+      - 'backend/voice_pipeline.py'
 
 jobs:
   deploy:
@@ -26,4 +27,6 @@ jobs:
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: python -m modal deploy backend/modal_app.py
+        run: |
+          python -m modal deploy backend/llm_server.py
+          python -m modal deploy backend/voice_pipeline.py
