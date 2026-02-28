@@ -18,8 +18,9 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Modal
-        run: pip install modal
+      - name: Install Modal and Dependencies
+        run: |
+          pip install modal fastapi
 
       - name: Deploy to Modal
         env:
