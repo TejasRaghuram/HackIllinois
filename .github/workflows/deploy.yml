@@ -1,0 +1,42 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to DigitalOcean via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USERNAME }}
+          password: ${{ secrets.DROPLET_PASSWORD }}
+          script: |
+            # Update and install dependencies
+            apt-get update
+            apt-get install -y python3-pip python3-venv git
+
+            # Navigate to app directory (or clone if it doesn't exist)
+            APP_DIR="/root/HackIllinois"
+            if [ ! -d "$APP_DIR" ]; then
+              git clone https://github.com/${{ github.repository }} "$APP_DIR"
+            fi
+            cd "$APP_DIR"
+            git pull origin main
+
+            # Setup backend
+            cd backend
+            python3 -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+
+            # Restart the service (using nohup for simplicity, ideally use systemd)
+            pkill -f "uvicorn Main:app" || true
+            nohup venv/bin/python3 -m uvicorn Main:app --host 0.0.0.0 --port 8000 > app.log 2>&1 &
