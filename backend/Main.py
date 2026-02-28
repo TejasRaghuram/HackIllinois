@@ -15,7 +15,8 @@ from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env from the same directory as this file
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 app = FastAPI()
 
