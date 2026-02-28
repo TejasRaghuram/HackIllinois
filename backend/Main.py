@@ -156,8 +156,14 @@ async def handle_media_stream(websocket: WebSocket):
         # async with websockets.connect(MODAL_WS_URL) as modal_ws:
         # Note: the modal_ws logic is commented out to replace with Gemini Multimodal Live API
         
-        async with gemini_client.aio.live.connect(model="gemini-2.5-flash-native-audio-preview-12-2025", config={"response_modalities": ["AUDIO"]}) as session:
+        async with gemini_client.aio.live.connect(
+            model="gemini-2.0-flash-exp",
+            config={"system_instruction": {"parts": [{"text": "You are a 911 dispatch assistant. Be extremely concise. Ask short questions. You are talking to a caller reporting an emergency. Always start the conversation by asking '911, what is your emergency?'"}]}, "response_modalities": ["AUDIO"]}
+        ) as session:
             logger.info("Connected to Gemini Live API")
+            
+            # Send an initial message to trigger the model's first response
+            await session.send(input="A new caller has connected to 911. Please say '911, what is your emergency?' to start the conversation.", end_of_turn=True)
             
             async def receive_from_twilio():
                 nonlocal stream_sid
@@ -200,6 +206,8 @@ async def handle_media_stream(websocket: WebSocket):
                             model_turn = server_content.model_turn
                             if model_turn is not None:
                                 for part in model_turn.parts:
+                                    if part.text:
+                                        logger.info(f"Gemini (Text): {part.text}")
                                     if part.inline_data and part.inline_data.data:
                                         # Gemini returns 24kHz PCM
                                         pcm_24k = part.inline_data.data
@@ -221,6 +229,7 @@ async def handle_media_stream(websocket: WebSocket):
                                         if stream_sid:
                                             media_msg["streamSid"] = stream_sid
                                         
+                                        logger.debug("Sending audio chunk to Twilio")
                                         await websocket.send_text(json.dumps(media_msg))
                 except asyncio.CancelledError:
                     pass
