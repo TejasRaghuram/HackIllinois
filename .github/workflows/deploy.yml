@@ -58,5 +58,7 @@ jobs:
             EOF
 
             systemctl daemon-reload
+            # Kill any process currently holding port 8000 to prevent "Address already in use"
+            fuser -k 8000/tcp || true
             systemctl restart hackillinois
             systemctl enable hackillinois
