@@ -33,6 +33,13 @@ memory_handler = MemoryLogHandler()
 memory_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 logger.addHandler(memory_handler)
 
+@app.get("/logs/clear")
+async def clear_logs():
+    """Clear the log history."""
+    log_history.clear()
+    # Redirect back to logs page
+    return Response(status_code=302, headers={"Location": "/logs"})
+
 @app.get("/logs", response_class=HTMLResponse)
 async def view_logs():
     """Simple HTTP endpoint to view the last 1000 logs. Auto-refreshes every 2 seconds."""
@@ -43,12 +50,19 @@ async def view_logs():
             <title>Live Logs</title>
             <meta http-equiv="refresh" content="2">
             <style>
-                body {{ background-color: #1e1e1e; color: #00ff00; font-family: monospace; padding: 20px; }}
-                pre {{ white-space: pre-wrap; word-wrap: break-word; }}
+                body {{ background-color: #1e1e1e; color: #00ff00; font-family: monospace; padding: 20px; margin: 0; }}
+                pre {{ white-space: pre-wrap; word-wrap: break-word; margin-top: 60px; }}
+                .header {{ position: fixed; top: 0; left: 0; right: 0; background: #2d2d2d; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; }}
+                h2 {{ margin: 0; font-size: 18px; }}
+                .clear-btn {{ background: #ff4444; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 4px; text-decoration: none; font-weight: bold; font-family: sans-serif; }}
+                .clear-btn:hover {{ background: #cc0000; }}
             </style>
         </head>
         <body>
-            <h2>Backend Logs (Auto-refreshing every 2s)</h2>
+            <div class="header">
+                <h2>Backend Logs (Auto-refreshing every 2s)</h2>
+                <a href="/logs/clear" class="clear-btn">Clear Logs</a>
+            </div>
             <pre>{logs_str if logs_str else "No logs yet..."}</pre>
             <script>
                 // Auto-scroll to the bottom
@@ -72,10 +86,12 @@ async def voice(request: Request):
     logger.info("Incoming call received at /voice")
     response = VoiceResponse()
     
+    # Let's say a message first so we know the webhook connected successfully
+    response.say("Welcome to the AI Dispatcher. Attempting to connect stream.")
+    
     connect = Connect()
     
     host = request.url.netloc
-    # Force 'wss' if required, but let's log what we are generating
     protocol = "wss" if request.url.scheme == "https" else "ws"
     
     # Check if headers contain ngrok or DO specific forwarded headers to ensure correct protocol
@@ -90,8 +106,9 @@ async def voice(request: Request):
     connect.stream(url=stream_url)
     response.append(connect)
     
-    # Optional: Add a pause to prevent immediate hangup if the stream connection takes a moment
-    # response.pause(length=40)
+    # Add a pause so it doesn't immediately hang up if the stream drops
+    response.pause(length=10)
+    response.say("Stream disconnected.")
     
     twiml_str = str(response)
     logger.debug(f"Generated TwiML: {twiml_str}")
