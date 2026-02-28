@@ -26,10 +26,14 @@ jobs:
             # Navigate to app directory (or clone if it doesn't exist)
             APP_DIR="/root/HackIllinois"
             if [ ! -d "$APP_DIR" ]; then
-              git clone https://github.com/${{ github.repository }} "$APP_DIR"
+              # Using public URL for cloning to avoid auth issues if repo is public
+              git clone https://github.com/${{ github.repository }}.git "$APP_DIR"
             fi
             cd "$APP_DIR"
-            git pull origin main
+            
+            # Reset and pull to ensure we are on the latest main
+            git fetch origin main
+            git reset --hard origin/main
 
             # Setup backend
             cd backend
@@ -37,6 +41,7 @@ jobs:
             source venv/bin/activate
             pip install -r requirements.txt
 
-            # Restart the service (using nohup for simplicity, ideally use systemd)
+            # Restart the service
             pkill -f "uvicorn Main:app" || true
+            # Run from the backend directory to ensure Main:app is findable
             nohup venv/bin/python3 -m uvicorn Main:app --host 0.0.0.0 --port 8000 > app.log 2>&1 &
