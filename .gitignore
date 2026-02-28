@@ -1,2 +1,19 @@
 frontend/.env
 backend/.env
+
+# Python virtual environment
+backend/venv/
+venv/
+.venv/
+env/
+.env/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
