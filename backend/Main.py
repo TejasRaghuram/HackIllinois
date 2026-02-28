@@ -96,9 +96,6 @@ async def voice(request: Request):
     logger.info("Incoming call received at /voice")
     response = VoiceResponse()
     
-    # Let's say a message first so we know the webhook connected successfully
-    # response.say("Welcome to the AI Dispatcher. Attempting to connect stream.")
-    
     connect = Connect()
     
     host = request.url.netloc
@@ -143,23 +140,18 @@ async def handle_media_stream(websocket: WebSocket):
     
     stream_sid = None
     
-    # URL of your Modal app (can be overridden via environment variables)
-    # MODAL_WS_URL = os.environ.get("MODAL_WS_URL", "wss://vigneshsaravanakumar404--hackillinois-voice-voicepipelin-fdb05b.modal.run/ai-stream")
-    
     if not gemini_client:
         logger.error("Gemini client not initialized. Closing connection.")
         await websocket.close()
         return
 
     try:
-        # Connect to Gemini Live API
-        # async with websockets.connect(MODAL_WS_URL) as modal_ws:
-        # Note: the modal_ws logic is commented out to replace with Gemini Multimodal Live API
-        
+        # FIX 1: Use plain dicts for transcription config instead of non-existent class
         config = types.LiveConnectConfig(
             system_instruction="You are a helpful math assistant. Be extremely concise. Help the user with their math problems. Always start the conversation by asking 'Hello, I am your math assistant. What problem can I help you with today?'",
             response_modalities=["AUDIO"],
-            input_audio_transcription=types.LiveConnectConfigInputAudioTranscription(model="models/gemini-2.0-flash-exp")
+            input_audio_transcription={},
+            output_audio_transcription={},
         )
         async with gemini_client.aio.live.connect(
             model="gemini-2.5-flash-native-audio-preview-12-2025",
@@ -167,8 +159,14 @@ async def handle_media_stream(websocket: WebSocket):
         ) as session:
             logger.info("Connected to Gemini Live API")
             
-            # Send an initial message to trigger the model's first response
-            await session.send(input="A new user has connected. Please say 'Hello, I am your math assistant. What problem can I help you with today?' to start the conversation.", end_of_turn=True)
+            # FIX 2: Use send_client_content for the initial text prompt
+            await session.send_client_content(
+                turns=types.Content(
+                    role="user",
+                    parts=[types.Part(text="A new user has connected. Please say 'Hello, I am your math assistant. What problem can I help you with today?' to start the conversation.")]
+                ),
+                turn_complete=True
+            )
             
             async def receive_from_twilio():
                 nonlocal stream_sid
@@ -192,10 +190,11 @@ async def handle_media_stream(websocket: WebSocket):
                             # Resample 8kHz PCM to 16kHz PCM
                             pcm_16k, _ = audioop.ratecv(pcm_8k, 2, 1, 8000, 16000, None)
                             
-                            # Send to Gemini - Use data blob for real-time audio input
-                            # Note: The Live API handles VAD automatically
+                            # FIX 3: Use send_realtime_input with types.Blob for streaming audio
                             try:
-                                await session.send(input={"data": pcm_16k, "mime_type": "audio/pcm;rate=16000"})
+                                await session.send_realtime_input(
+                                    audio=types.Blob(data=pcm_16k, mime_type="audio/pcm;rate=16000")
+                                )
                             except Exception as e:
                                 logger.error(f"Error sending audio to Gemini: {e}")
                             
@@ -210,6 +209,7 @@ async def handle_media_stream(websocket: WebSocket):
             async def receive_from_gemini():
                 try:
                     async for response in session.receive():
+                        # Handle model audio/text output
                         if response.server_content and response.server_content.model_turn:
                             model_turn = response.server_content.model_turn
                             for part in model_turn.parts:
@@ -239,19 +239,23 @@ async def handle_media_stream(websocket: WebSocket):
                                     logger.debug("Sending audio chunk to Twilio")
                                     await websocket.send_text(json.dumps(media_msg))
                         
-                        if response.server_content and response.server_content.interruption:
+                        # Handle interruptions
+                        if response.server_content and response.server_content.interrupted:
                             logger.info("Model interrupted by user speech")
                             
                         if response.server_content and response.server_content.turn_complete:
                             logger.debug("Model turn complete")
 
-                        # Handle user transcriptions if enabled
-                        if response.server_content and hasattr(response.server_content, 'user_content'):
-                            user_content = response.server_content.user_content
-                            if user_content.parts:
-                                for part in user_content.parts:
-                                    if part.text:
-                                        logger.info(f"User: {part.text}")
+                        # Handle input transcription (what the user said)
+                        if response.server_content and hasattr(response.server_content, 'input_transcription') and response.server_content.input_transcription:
+                            if response.server_content.input_transcription.text:
+                                logger.info(f"User: {response.server_content.input_transcription.text}")
+                        
+                        # Handle output transcription (what the model said)
+                        if response.server_content and hasattr(response.server_content, 'output_transcription') and response.server_content.output_transcription:
+                            if response.server_content.output_transcription.text:
+                                logger.info(f"Assistant transcript: {response.server_content.output_transcription.text}")
+
                 except asyncio.CancelledError:
                     pass
                 except Exception as e:
