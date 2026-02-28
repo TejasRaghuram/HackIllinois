@@ -20,6 +20,7 @@ voice_image = (
         "websockets",
         "uvicorn",
         "faster-whisper",
+        "transformers<4.45.0", # Older transformers required for Qwen Tokenizer in vLLM 0.6.3
         "vllm==0.6.3.post1",
         "torch==2.4.0",
         "torchaudio==2.4.0",
