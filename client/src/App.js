@@ -2,6 +2,10 @@ import './App.css';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { useState, useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
+import Police from './images/police.png';
+import Ambulance from './images/ambulance.png';
+import Firetruck from './images/firetruck.png';
+import Drone from './images/drone.png';
 
 function App() {
 
@@ -61,9 +65,86 @@ function App() {
               style={{ height: '100%', width: '100%' }}
             />
           </div>
-          <div id="calls"></div>
+          <div id="calls">
+            {[0, 0, 0, 0, 0, 0, 0].map((zero, index) => (
+              <div id="call">
+                <p id="number">(999) 999-9999</p>
+                <p id="severity"><span id="flash"/>Severity</p>
+                <p id="situation">Situation<span id="address"> - Address</span></p>
+                <p id="transcript">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+              </div>
+            ))}
+          </div>
         </div>
-        <div id="info"></div>
+        <div id="info">
+          <div id="ticket">
+            <h3>Incident Ticket - ID</h3>
+            <p className="title">Caller Info</p><br/>
+            <p className="subtitle">Name:</p>
+            <p className="info">John Doe</p><br/>
+            <p className="subtitle">Phone:</p>
+            <p className="info">(217) 555-0192</p>
+            <br/>
+            <p className="title">Location</p><br/>
+            <p className="subtitle">Address:</p>
+            <p className="info">123 Main St, Apt 4B</p><br/>
+            <p className="subtitle">Coordinates:</p>
+            <p className="info">40.1122, -88.2433</p>
+            <br/>
+            <p className="title">Incident Details</p><br/>
+            <p className="subtitle">Type:</p>
+            <p className="info">Robbery</p><br/>
+            <p className="subtitle">Severity:</p>
+            <p className="info">Urgent</p><br/>
+            <p className="subtitle">Notes:</p>
+            <p className="info">Armed Suspect, No Injuries</p>
+            <br/>
+            <p className="title">Status</p><br/>
+            <p className="subtitle">Current Status:</p>
+            <p className="info">En Route</p><br/>
+            <p className="subtitle">Resource Assignment:</p>
+            <p className="info">Police</p><br/>
+          </div>
+          <div id="actions">
+            <button id="police">
+              <img src={Police}/>
+              <br/>
+              Police
+            </button>
+            <button id="ambulance">
+              <img src={Ambulance}/>
+              <br/>
+              Ambulance
+            </button>
+            <button id="firetruck">
+              <img src={Firetruck}/>
+              <br/>
+              Fire Truck
+            </button>
+            <button id="drone">
+              <img src={Drone}/>
+              <br/>
+              Drone Unit
+            </button>
+          </div>
+          <div id="extended-transcript">
+            <h3>Call Transcript</h3>
+            <div class="content">
+              {[0, 0, 0, 0, 0, 0, 0].map((zero, index) => (
+                <div>
+                  <div class="chat-entry">
+                    <span class="speaker">Caller:</span>
+                    <span class="message">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</span>
+                  </div>
+                  <div class="chat-entry">
+                    <span class="speaker">Dispatcher:</span>
+                    <span class="message">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
