@@ -157,7 +157,7 @@ async def handle_media_stream(websocket: WebSocket):
         # Note: the modal_ws logic is commented out to replace with Gemini Multimodal Live API
         
         config = types.LiveConnectConfig(
-            system_instruction="You are a 911 dispatch assistant. Be extremely concise. Ask short questions. You are talking to a caller reporting an emergency. Always start the conversation by asking '911, what is your emergency?'",
+            system_instruction="You are a helpful math assistant. Be extremely concise. Help the user with their math problems. Always start the conversation by asking 'Hello, I am your math assistant. What problem can I help you with today?'",
             response_modalities=["AUDIO"]
         )
         async with gemini_client.aio.live.connect(
@@ -167,7 +167,7 @@ async def handle_media_stream(websocket: WebSocket):
             logger.info("Connected to Gemini Live API")
             
             # Send an initial message to trigger the model's first response
-            await session.send(input="A new caller has connected to 911. Please say '911, what is your emergency?' to start the conversation.", end_of_turn=True)
+            await session.send(input="A new user has connected. Please say 'Hello, I am your math assistant. What problem can I help you with today?' to start the conversation.", end_of_turn=True)
             
             async def receive_from_twilio():
                 nonlocal stream_sid
@@ -191,8 +191,12 @@ async def handle_media_stream(websocket: WebSocket):
                             # Resample 8kHz PCM to 16kHz PCM
                             pcm_16k, _ = audioop.ratecv(pcm_8k, 2, 1, 8000, 16000, None)
                             
-                            # Send to Gemini
-                            await session.send(input={"data": pcm_16k, "mime_type": "audio/pcm;rate=16000"}, end_of_turn=False)
+                            # Send to Gemini - Use data blob for real-time audio input
+                            # Note: The Live API handles VAD automatically
+                            try:
+                                await session.send(input=pcm_16k)
+                            except Exception as e:
+                                logger.error(f"Error sending audio to Gemini: {e}")
                             
                         elif data['event'] == 'stop':
                             logger.info("Stream stopped by Twilio")
