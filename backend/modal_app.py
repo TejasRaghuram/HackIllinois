@@ -34,8 +34,8 @@ voice_image = (
     ])
 )
 
-# You can adjust the GPU type and count. For Llama-3-8B or smaller, an A10G is generally sufficient.
-@app.cls(image=voice_image, gpu="H200", min_containers=1, allow_concurrent_inputs=20)
+@app.cls(image=voice_image, gpu="H200", min_containers=1)
+@modal.concurrent(max_inputs=20)
 class VoicePipeline:
     @modal.enter()
     def setup_models(self):
@@ -65,7 +65,7 @@ class VoicePipeline:
         # We use a very small, fast model to keep latency low. You can switch to meta-llama/Meta-Llama-3-8B-Instruct
         print("Loading vLLM Engine...")
         engine_args = AsyncEngineArgs(
-            model="meta-llama/Llama-3.2-1B-Instruct", # Very fast placeholder model, change to your preferred model
+            model="microsoft/Phi-3.5-mini-instruct",
             gpu_memory_utilization=0.5,
             max_model_len=2048,
             enforce_eager=True, # Good for low-latency streaming
