@@ -156,7 +156,7 @@ async def handle_media_stream(websocket: WebSocket):
         # async with websockets.connect(MODAL_WS_URL) as modal_ws:
         # Note: the modal_ws logic is commented out to replace with Gemini Multimodal Live API
         
-        async with gemini_client.aio.live.connect(model="gemini-2.0-flash", config={"response_modalities": ["AUDIO"]}) as session:
+        async with gemini_client.aio.live.connect(model="gemini-2.5-flash-native-audio-preview-12-2025", config={"response_modalities": ["AUDIO"]}) as session:
             logger.info("Connected to Gemini Live API")
             
             async def receive_from_twilio():
