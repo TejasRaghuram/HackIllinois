@@ -1,0 +1,65 @@
+---
+alwaysApply: true
+---
+# Project: Autonomous 911 Dispatch Agent
+
+## Overview
+
+This is a HackIllinois hackathon project built by a 2-person team. We are building an AI-powered autonomous 911 dispatch system that replaces or augments human 911 operators. The system handles live phone calls end-to-end: real-time transcription/translation, intelligent triage, automated dispatch of emergency services, and agency briefing — all without human intervention.
+
+## Architecture
+
+The system has four core pipelines that run concurrently:
+
+### 1. Real-Time Transcription & Translation Pipeline
+- Ingests live audio from 911 callers via **Twilio** voice streams.
+- Performs real-time speech-to-text with automatic language detection.
+- Translates any language into English in real-time so downstream agents always work with English text.
+- Outputs a continuously updating transcript.
+
+### 2. Triage & Dispatch Agent
+- A continuously running LLM agent that scans the live transcript as it streams in.
+- Classifies the emergency type (fire, medical, crime, missing person, etc.).
+- Determines which services to dispatch: firefighters, police, EMS, or other specialized units.
+- Makes dispatch decisions as soon as there is sufficient information — does not wait for the call to end.
+
+### 3. Agency Briefing Generator
+- Once a dispatch decision is made, this agent generates a structured briefing for the responding agency.
+- For medical emergencies: patient health status, symptoms, location, number of victims.
+- For crime/active threats: threat description, suspect info, weapon details, number of aggressors, victim status.
+- For fires: building type, number of floors, trapped persons, hazardous materials.
+- The briefing is delivered instantly so responders know exactly what they are walking into.
+
+### 4. RAG-Powered Cross-Call Intelligence
+- All call transcriptions are stored and indexed in **Supermemory** (our RAG vector store).
+- The system recognizes patterns across multiple concurrent or recent calls.
+- Example: If 3 separate callers report a missing child in the same neighborhood, the system automatically combines context from all calls and generates a unified alert with composite details.
+- Enables smarter, context-aware dispatching that a single human operator could never achieve.
+
+## Tech Stack
+
+| Component | Technology |
+|---|---|
+| Language | Python |
+| LLM Inference | Modal (targeting HackIllinois sponsor category) |
+| Telephony | Twilio (live voice call ingestion + streaming) |
+| RAG / Vector Store | Supermemory |
+| Demo Format | Live phone call demonstration |
+
+## Key Design Principles
+
+- **Real-time first**: Everything streams. The triage agent does not wait for a complete transcript — it acts on partial information and updates decisions as more context arrives.
+- **Language-agnostic**: The caller can speak any language. Translation happens transparently before triage.
+- **Multi-call awareness**: The RAG system means the agent gets smarter with every call and can correlate information across calls happening simultaneously.
+- **Structured outputs**: All dispatch decisions and agency briefings should be structured/typed, not free-form text. Use Pydantic models for all agent outputs.
+- **Latency matters**: This is a 911 system. Every architectural decision should minimize time-to-dispatch. Prefer streaming over batch processing everywhere.
+
+## When Writing Code for This Project
+
+- Always use **async/await** — the entire system is concurrent (multiple calls, streaming transcripts, parallel agents).
+- Use **Pydantic** for all data models (call records, dispatch decisions, briefings).
+- Prefer **streaming** LLM responses from Modal when possible.
+- All Twilio webhook handlers should be non-blocking.
+- Write code that handles partial/incomplete transcripts gracefully — the triage agent will receive incomplete sentences.
+- Keep latency top of mind. If there is a faster way to do something, prefer it.
+- This is a hackathon — prioritize working features over perfect abstractions. Ship fast, but keep the code readable for a 2-person team.
