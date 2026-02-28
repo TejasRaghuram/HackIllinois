@@ -20,7 +20,6 @@ voice_image = (
         "websockets",
         "uvicorn",
         "faster-whisper",
-        "transformers<4.45.0", # Older transformers required for Qwen Tokenizer in vLLM 0.6.3
         "vllm==0.6.3.post1",
         "torch==2.4.0",
         "torchaudio==2.4.0",
@@ -69,7 +68,9 @@ class VoicePipeline:
             model="Qwen/Qwen1.5-0.5B-Chat", # Very fast placeholder model, change to your preferred model
             gpu_memory_utilization=0.5,
             max_model_len=2048,
-            enforce_eager=True # Good for low-latency streaming
+            enforce_eager=True, # Good for low-latency streaming
+            # Qwen tokenizer issue workaround for older vLLM:
+            tokenizer_mode="slow"
         )
         self.llm_engine = AsyncLLMEngine.from_engine_args(engine_args)
 
