@@ -126,7 +126,7 @@ async def handle_media_stream(websocket: WebSocket):
     stream_sid = None
     
     # URL of your Modal app (can be overridden via environment variables)
-    MODAL_WS_URL = os.environ.get("MODAL_WS_URL", "wss://vigneshsaravanakumar404--hackillinois-voice-pipeline-voi-445d41.modal.run/ai-stream")
+    MODAL_WS_URL = os.environ.get("MODAL_WS_URL", "wss://vigneshsaravanakumar404--hackillinois-voice-voicepipeline-asgi-app.modal.run/ai-stream")
     
     try:
         # Connect to Modal
