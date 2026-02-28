@@ -11,19 +11,19 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 app = modal.App("hackillinois-voice-pipeline")
 
 # Create a container image with all necessary dependencies
+# vllm requires a specific modal CUDA image to build properly
 voice_image = (
     modal.Image.debian_slim(python_version="3.11")
-    .apt_install("ffmpeg", "wget")
+    .apt_install("ffmpeg", "wget", "git")
     .pip_install(
         "fastapi",
         "websockets",
         "uvicorn",
         "faster-whisper",
-        "vllm",
-        "torch",
-        "torchaudio",
-        "numpy",
-        "audioop-lts"  # For mu-law encoding/decoding in newer Python versions
+        "vllm>=0.6.4", # Pin a specific vLLM version that usually has pre-built wheels
+        "torch>=2.4.0", # Pin torch to match vllm
+        "torchaudio==2.4.0",
+        "numpy<2.0", # Faster whisper sometimes has issues with numpy 2.0
     )
     # Download a small piper-tts model for voice synthesis
     .run_commands([
@@ -35,7 +35,7 @@ voice_image = (
 )
 
 # You can adjust the GPU type and count. For Llama-3-8B or smaller, an A10G is generally sufficient.
-@app.cls(image=voice_image, gpu="A10G", keep_warm=1)
+@app.cls(image=voice_image, gpu="A10G", min_containers=1)
 class VoicePipeline:
     @modal.enter()
     def setup_models(self):
@@ -179,6 +179,7 @@ class VoicePipeline:
                             # Convert to numpy float32 array in range [-1.0, 1.0]
                             np_array = np.frombuffer(audio_buffer, dtype=np.int16).astype(np.float32) / 32768.0
                             import torch
+                            import torchaudio
                             tensor_chunk = torch.from_numpy(np_array)
                             
                             # Simple Voice Activity Detection check
