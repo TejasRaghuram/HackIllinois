@@ -20,10 +20,10 @@ voice_image = (
         "websockets",
         "uvicorn",
         "faster-whisper",
-        "vllm>=0.6.4", # Pin a specific vLLM version that usually has pre-built wheels
-        "torch>=2.4.0", # Pin torch to match vllm
+        "vllm==0.6.3.post1",
+        "torch==2.4.0",
         "torchaudio==2.4.0",
-        "numpy<2.0", # Faster whisper sometimes has issues with numpy 2.0
+        "numpy<2.0",
     )
     # Download a small piper-tts model for voice synthesis
     .run_commands([
