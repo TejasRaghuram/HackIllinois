@@ -97,7 +97,7 @@ async def voice(request: Request):
     response = VoiceResponse()
     
     # Let's say a message first so we know the webhook connected successfully
-    response.say("Welcome to the AI Dispatcher. Attempting to connect stream.")
+    # response.say("Welcome to the AI Dispatcher. Attempting to connect stream.")
     
     connect = Connect()
     
@@ -158,7 +158,8 @@ async def handle_media_stream(websocket: WebSocket):
         
         config = types.LiveConnectConfig(
             system_instruction="You are a helpful math assistant. Be extremely concise. Help the user with their math problems. Always start the conversation by asking 'Hello, I am your math assistant. What problem can I help you with today?'",
-            response_modalities=["AUDIO"]
+            response_modalities=["AUDIO"],
+            input_audio_transcription=types.LiveConnectConfigInputAudioTranscription(model="models/gemini-2.0-flash-exp")
         )
         async with gemini_client.aio.live.connect(
             model="gemini-2.5-flash-native-audio-preview-12-2025",
@@ -194,7 +195,7 @@ async def handle_media_stream(websocket: WebSocket):
                             # Send to Gemini - Use data blob for real-time audio input
                             # Note: The Live API handles VAD automatically
                             try:
-                                await session.send(input=pcm_16k)
+                                await session.send(input={"data": pcm_16k, "mime_type": "audio/pcm;rate=16000"})
                             except Exception as e:
                                 logger.error(f"Error sending audio to Gemini: {e}")
                             
@@ -209,36 +210,48 @@ async def handle_media_stream(websocket: WebSocket):
             async def receive_from_gemini():
                 try:
                     async for response in session.receive():
-                        server_content = response.server_content
-                        if server_content is not None:
-                            model_turn = server_content.model_turn
-                            if model_turn is not None:
-                                for part in model_turn.parts:
-                                    if part.text:
-                                        logger.info(f"Gemini (Text): {part.text}")
-                                    if part.inline_data and part.inline_data.data:
-                                        # Gemini returns 24kHz PCM
-                                        pcm_24k = part.inline_data.data
-                                        
-                                        # Resample 24kHz PCM to 8kHz PCM
-                                        pcm_8k, _ = audioop.ratecv(pcm_24k, 2, 1, 24000, 8000, None)
-                                        
-                                        # Convert 8kHz PCM to 8kHz µ-law
-                                        ulaw_8k = audioop.lin2ulaw(pcm_8k, 2)
-                                        
-                                        # Send back to Twilio
-                                        payload = base64.b64encode(ulaw_8k).decode('utf-8')
-                                        media_msg = {
-                                            "event": "media",
-                                            "media": {
-                                                "payload": payload
-                                            }
+                        if response.server_content and response.server_content.model_turn:
+                            model_turn = response.server_content.model_turn
+                            for part in model_turn.parts:
+                                if part.text:
+                                    logger.info(f"Assistant: {part.text}")
+                                if part.inline_data and part.inline_data.data:
+                                    # Gemini returns 24kHz PCM
+                                    pcm_24k = part.inline_data.data
+                                    
+                                    # Resample 24kHz PCM to 8kHz PCM
+                                    pcm_8k, _ = audioop.ratecv(pcm_24k, 2, 1, 24000, 8000, None)
+                                    
+                                    # Convert 8kHz PCM to 8kHz µ-law
+                                    ulaw_8k = audioop.lin2ulaw(pcm_8k, 2)
+                                    
+                                    # Send back to Twilio
+                                    payload = base64.b64encode(ulaw_8k).decode('utf-8')
+                                    media_msg = {
+                                        "event": "media",
+                                        "media": {
+                                            "payload": payload
                                         }
-                                        if stream_sid:
-                                            media_msg["streamSid"] = stream_sid
-                                        
-                                        logger.debug("Sending audio chunk to Twilio")
-                                        await websocket.send_text(json.dumps(media_msg))
+                                    }
+                                    if stream_sid:
+                                        media_msg["streamSid"] = stream_sid
+                                    
+                                    logger.debug("Sending audio chunk to Twilio")
+                                    await websocket.send_text(json.dumps(media_msg))
+                        
+                        if response.server_content and response.server_content.interruption:
+                            logger.info("Model interrupted by user speech")
+                            
+                        if response.server_content and response.server_content.turn_complete:
+                            logger.debug("Model turn complete")
+
+                        # Handle user transcriptions if enabled
+                        if response.server_content and hasattr(response.server_content, 'user_content'):
+                            user_content = response.server_content.user_content
+                            if user_content.parts:
+                                for part in user_content.parts:
+                                    if part.text:
+                                        logger.info(f"User: {part.text}")
                 except asyncio.CancelledError:
                     pass
                 except Exception as e:

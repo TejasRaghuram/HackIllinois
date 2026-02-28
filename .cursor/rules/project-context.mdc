@@ -63,3 +63,10 @@ The system has four core pipelines that run concurrently:
 - Write code that handles partial/incomplete transcripts gracefully — the triage agent will receive incomplete sentences.
 - Keep latency top of mind. If there is a faster way to do something, prefer it.
 - This is a hackathon — prioritize working features over perfect abstractions. Ship fast, but keep the code readable for a 2-person team.
+
+## Git Workflow
+
+- **Auto-Commit & Push**: At the end of every task or significant change, always offer to or automatically (if confirmed) commit and push the changes to the remote repository.
+- Use descriptive, concise commit messages.
+- Ensure all changes are staged before committing.
+- Always push to the current branch (usually `main` for this hackathon).
