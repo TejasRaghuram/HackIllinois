@@ -48,6 +48,27 @@ function App() {
     });
   }, []);
 
+  const POINTS = [
+  { id: 1, lngLat: [-88.211105, 40.113159], title: 'Downtown' },
+  { id: 2, lngLat: [-88.2433, 40.1122], title: 'Incident' },
+];
+
+useEffect(() => {
+  if (!mapRef.current) return;
+
+  const markers = POINTS.map((pt) => {
+    const el = document.createElement('div');
+    el.className = 'red flash large';
+    el.title = pt.title;
+
+    return new mapboxgl.Marker(el)
+      .setLngLat(pt.lngLat)
+      .addTo(mapRef.current);
+  });
+
+  return () => markers.forEach(m => m.remove());
+}, []);
+
   return (
     <div id="app">
       <header>
@@ -69,7 +90,7 @@ function App() {
             {[0, 0, 0, 0, 0, 0, 0].map((zero, index) => (
               <div id="call">
                 <p id="number">(999) 999-9999</p>
-                <p id="severity"><span id="flash"/>Severity</p>
+                <p id="severity" className="red red-bg"><span className="red flash"/>Severity</p>
                 <p id="situation">Situation<span id="address"> - Address</span></p>
                 <p id="transcript">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
               </div>

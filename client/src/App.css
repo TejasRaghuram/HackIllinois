@@ -108,7 +108,7 @@ header {
   display: inline-block;
 }
 
-#flash {
+.flash {
   width: 5px;
   height: 5px;
   margin-left: 2px;
@@ -116,9 +116,13 @@ header {
   position: relative;
   bottom: 2px;
   display: inline-block;
-  background-color: rgb(255, 75, 75);
-  border-radius: 5px;
+  border-radius: 10px;
   animation: flash 2s infinite;
+}
+
+.large {
+  width: 20px;
+  height: 20px;
 }
 
 #severity {
@@ -127,14 +131,21 @@ header {
   padding-top: 5px;
   padding-bottom: 5px;
   font-size: 14px;
-  color: rgb(255, 75, 75);
-  background-color: rgba(100, 0, 0, 0.5);
   border-style: solid;
   border-width: 2px;
   border-radius: 30px;
   display: inline-block;
   position: absolute;
   right: 5px;
+}
+
+.red {
+  color: rgb(255, 75, 75);
+  background-color: rgb(255, 75, 75);
+}
+
+.red-bg {
+  background-color: rgba(100, 0, 0, 0.5)
 }
 
 #situation {
