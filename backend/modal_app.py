@@ -69,7 +69,6 @@ class VoicePipeline:
             gpu_memory_utilization=0.5,
             max_model_len=2048,
             enforce_eager=True, # Good for low-latency streaming
-            # Qwen tokenizer issue workaround for older vLLM:
             tokenizer_mode="slow"
         )
         self.llm_engine = AsyncLLMEngine.from_engine_args(engine_args)
