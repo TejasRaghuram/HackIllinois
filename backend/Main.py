@@ -10,6 +10,13 @@ import websockets
 from collections import deque
 from datetime import datetime
 
+import audioop
+from google import genai
+from google.genai import types
+from dotenv import load_dotenv
+
+load_dotenv()
+
 app = FastAPI()
 
 # --- Logging Setup ---
@@ -117,21 +124,36 @@ async def voice(request: Request):
     
     return Response(content=twiml_str, media_type="application/xml")
 
+# Initialize Gemini Client
+try:
+    gemini_client = genai.Client()
+except Exception as e:
+    logger.error(f"Failed to initialize Gemini Client: {e}")
+    gemini_client = None
+
 @app.websocket("/media-stream")
 async def handle_media_stream(websocket: WebSocket):
-    """Bidirectional proxy between Twilio and Modal AI pipeline."""
+    """Bidirectional proxy between Twilio and Gemini Live API."""
     await websocket.accept()
     logger.info("Twilio connected to /media-stream WebSocket")
     
     stream_sid = None
     
     # URL of your Modal app (can be overridden via environment variables)
-    MODAL_WS_URL = os.environ.get("MODAL_WS_URL", "wss://vigneshsaravanakumar404--hackillinois-voice-voicepipelin-fdb05b.modal.run/ai-stream")
+    # MODAL_WS_URL = os.environ.get("MODAL_WS_URL", "wss://vigneshsaravanakumar404--hackillinois-voice-voicepipelin-fdb05b.modal.run/ai-stream")
     
+    if not gemini_client:
+        logger.error("Gemini client not initialized. Closing connection.")
+        await websocket.close()
+        return
+
     try:
-        # Connect to Modal
-        async with websockets.connect(MODAL_WS_URL) as modal_ws:
-            logger.info(f"Connected to Modal AI Pipeline at {MODAL_WS_URL}")
+        # Connect to Gemini Live API
+        # async with websockets.connect(MODAL_WS_URL) as modal_ws:
+        # Note: the modal_ws logic is commented out to replace with Gemini Multimodal Live API
+        
+        async with gemini_client.aio.live.connect(model="gemini-2.5-flash", config={"response_modalities": ["AUDIO"]}) as session:
+            logger.info("Connected to Gemini Live API")
             
             async def receive_from_twilio():
                 nonlocal stream_sid
@@ -143,39 +165,67 @@ async def handle_media_stream(websocket: WebSocket):
                         if data['event'] == 'start':
                             stream_sid = data['start']['streamSid']
                             logger.info(f"Stream started: {stream_sid}")
-                            await modal_ws.send(message)
                             
                         elif data['event'] == 'media':
-                            await modal_ws.send(message)
+                            # Twilio sends 8kHz µ-law
+                            payload = data['media']['payload']
+                            chunk = base64.b64decode(payload)
+                            
+                            # Convert 8kHz µ-law to 8kHz PCM
+                            pcm_8k = audioop.ulaw2lin(chunk, 2)
+                            
+                            # Resample 8kHz PCM to 16kHz PCM
+                            pcm_16k, _ = audioop.ratecv(pcm_8k, 2, 1, 8000, 16000, None)
+                            
+                            # Send to Gemini
+                            await session.send(input={"data": pcm_16k, "mime_type": "audio/pcm;rate=16000"}, end_of_turn=False)
                             
                         elif data['event'] == 'stop':
                             logger.info("Stream stopped by Twilio")
-                            await modal_ws.send(message)
                             break
                 except WebSocketDisconnect:
                     logger.warning("Twilio disconnected")
                 except Exception as e:
                     logger.error(f"Error receiving from Twilio: {e}")
 
-            async def receive_from_modal():
+            async def receive_from_gemini():
                 try:
-                    while True:
-                        message = await modal_ws.recv()
-                        data = json.loads(message)
-                        
-                        # Add streamSid to the media event sent back to Twilio
-                        if data.get("event") == "media" and stream_sid:
-                            data["streamSid"] = stream_sid
-                            
-                        await websocket.send_text(json.dumps(data))
-                except websockets.exceptions.ConnectionClosed:
-                    logger.warning("Modal disconnected")
+                    async for response in session.receive():
+                        server_content = response.server_content
+                        if server_content is not None:
+                            model_turn = server_content.model_turn
+                            if model_turn is not None:
+                                for part in model_turn.parts:
+                                    if part.inline_data and part.inline_data.data:
+                                        # Gemini returns 24kHz PCM
+                                        pcm_24k = part.inline_data.data
+                                        
+                                        # Resample 24kHz PCM to 8kHz PCM
+                                        pcm_8k, _ = audioop.ratecv(pcm_24k, 2, 1, 24000, 8000, None)
+                                        
+                                        # Convert 8kHz PCM to 8kHz µ-law
+                                        ulaw_8k = audioop.lin2ulaw(pcm_8k, 2)
+                                        
+                                        # Send back to Twilio
+                                        payload = base64.b64encode(ulaw_8k).decode('utf-8')
+                                        media_msg = {
+                                            "event": "media",
+                                            "media": {
+                                                "payload": payload
+                                            }
+                                        }
+                                        if stream_sid:
+                                            media_msg["streamSid"] = stream_sid
+                                        
+                                        await websocket.send_text(json.dumps(media_msg))
+                except asyncio.CancelledError:
+                    pass
                 except Exception as e:
-                    logger.error(f"Error receiving from Modal: {e}")
+                    logger.error(f"Error receiving from Gemini: {e}")
 
             # Run both tasks concurrently and stop when either finishes
             task1 = asyncio.create_task(receive_from_twilio())
-            task2 = asyncio.create_task(receive_from_modal())
+            task2 = asyncio.create_task(receive_from_gemini())
             
             done, pending = await asyncio.wait(
                 [task1, task2],

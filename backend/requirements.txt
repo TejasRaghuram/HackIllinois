@@ -3,3 +3,4 @@ uvicorn
 twilio
 websockets
 python-dotenv
+google-genai
