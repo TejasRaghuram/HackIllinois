@@ -4,3 +4,5 @@ twilio
 websockets
 python-dotenv
 google-genai
+aiosqlite
+pydantic

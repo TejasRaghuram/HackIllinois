@@ -1,0 +1,8 @@
+To properly dispatch emergency services, you must establish the following context:
+1. The exact location of the emergency (address, cross streets, or landmarks).
+2. The nature of the emergency (fire, medical, crime, active shooter, etc.).
+3. The name of the caller.
+4. If anyone is injured or in immediate danger.
+
+Adapt your questions naturally based on the caller's responses. Do not ask a question if the caller has already provided the answer.
+Ensure you gather this information as quickly as possible so services can be dispatched.

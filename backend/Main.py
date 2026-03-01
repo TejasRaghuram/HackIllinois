@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect, Form
 from fastapi.responses import HTMLResponse
 from twilio.twiml.voice_response import VoiceResponse, Connect, Stream
 import json
@@ -9,16 +9,25 @@ import os
 import websockets
 from collections import deque
 from datetime import datetime
+from contextlib import asynccontextmanager
+
+import backend.database as db
 
 import audioop
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 # Load .env from the same directory as this file
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await db.init_db()
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 # --- Logging Setup ---
 # Store the last 1000 logs in memory
@@ -83,6 +92,58 @@ async def view_logs():
     """
     return html_content
 
+@app.get("/sessions", response_class=HTMLResponse)
+async def view_sessions():
+    """View all stored sessions and their transcripts live."""
+    sessions = await db.get_all_sessions()
+    
+    html = """
+    <html>
+        <head>
+            <title>Live Sessions</title>
+            <meta http-equiv="refresh" content="3">
+            <style>
+                body { background-color: #1e1e1e; color: #d4d4d4; font-family: monospace; padding: 20px; margin: 0; }
+                h1 { color: #569cd6; border-bottom: 1px solid #444; padding-bottom: 10px; }
+                .session { border: 1px solid #444; padding: 15px; margin-bottom: 20px; border-radius: 5px; background-color: #252526; }
+                .session h2 { margin-top: 0; color: #4ec9b0; }
+                pre { background-color: #1e1e1e; padding: 10px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; font-family: monospace; font-size: 14px; }
+                .caller { color: #ce9178; }
+                .agent { color: #9cdcfe; }
+            </style>
+        </head>
+        <body>
+            <h1>Live 911 Sessions Dashboard</h1>
+            <p>Auto-refreshing every 3 seconds...</p>
+    """
+    
+    if not sessions:
+        html += "<p>No active sessions found in database.</p>"
+        
+    for s in sessions:
+        html += f"""
+        <div class="session">
+            <h2>Session: {s['session_id']}</h2>
+            <p><strong>Phone:</strong> {s['phone_number']} | <strong>Name:</strong> {s.get('caller_name') or 'Pending'} | <strong>Address:</strong> {s.get('address') or 'Pending'}</p>
+            <p><strong>Actions Taken:</strong> {s.get('actions') or 'None'}</p>
+            <h3>Live Transcript:</h3>
+            <pre>"""
+        
+        try:
+            transcript = json.loads(s['transcript']) if s.get('transcript') else []
+            for turn in transcript:
+                role = turn.get('role', 'unknown')
+                text = turn.get('text', '')
+                css_class = "caller" if role == "caller" else "agent"
+                html += f"<span class='{css_class}'><strong>{role.upper()}:</strong> {text}</span>\n"
+        except:
+            html += f"{s.get('transcript', '')}"
+            
+        html += """</pre></div>"""
+        
+    html += "</body></html>"
+    return html
+
 # --- App Endpoints ---
 
 @app.get("/hello")
@@ -94,6 +155,20 @@ def read_hello():
 async def voice(request: Request):
     """Handle incoming calls and connect them to our AI stream."""
     logger.info("Incoming call received at /voice")
+    
+    # Extract form data to get caller information
+    try:
+        form_data = await request.form()
+        call_sid = form_data.get("CallSid", f"unknown_{int(datetime.now().timestamp())}")
+        caller_phone = form_data.get("From", "unknown")
+    except Exception:
+        call_sid = f"unknown_{int(datetime.now().timestamp())}"
+        caller_phone = "unknown"
+        
+    logger.info(f"Session started: {call_sid} from {caller_phone}")
+    # Create DB session
+    await db.create_session(call_sid, caller_phone)
+
     response = VoiceResponse()
     
     connect = Connect()
@@ -107,7 +182,7 @@ async def voice(request: Request):
         protocol = "wss" if forwarded_proto == "https" else "ws"
         logger.info(f"Using forwarded protocol: {protocol}")
         
-    stream_url = f"{protocol}://{host}/media-stream"
+    stream_url = f"{protocol}://{host}/media-stream?session_id={call_sid}&phone_number={caller_phone}"
     logger.info(f"Connecting Twilio stream to: {stream_url}")
     
     connect.stream(url=stream_url)
@@ -132,11 +207,16 @@ except Exception as e:
     logger.error(f"Failed to initialize Gemini Client: {e}")
     gemini_client = None
 
+class DecisionMakerOutput(BaseModel):
+    caller_name: str | None = Field(default=None, description="Name of the caller if mentioned.")
+    address: str | None = Field(default=None, description="Location of the emergency if mentioned.")
+    actions: list[str] = Field(default_factory=list, description="List of actions taken, such as 'dispatch_police', 'dispatch_fire', 'dispatch_ems', or empty if none.")
+
 @app.websocket("/media-stream")
-async def handle_media_stream(websocket: WebSocket):
+async def handle_media_stream(websocket: WebSocket, session_id: str = "unknown", phone_number: str = "unknown"):
     """Bidirectional proxy between Twilio and Gemini Live API."""
     await websocket.accept()
-    logger.info("Twilio connected to /media-stream WebSocket")
+    logger.info(f"Twilio connected to /media-stream WebSocket for session {session_id} ({phone_number})")
     
     stream_sid = None
     
@@ -146,9 +226,20 @@ async def handle_media_stream(websocket: WebSocket):
         return
 
     try:
+        # Load prompts dynamically so they can be edited without restarting
+        try:
+            with open(os.path.join(os.path.dirname(__file__), "prompts/system_prompt.txt"), "r") as f:
+                system_prompt = f.read()
+            with open(os.path.join(os.path.dirname(__file__), "prompts/structured_questions.txt"), "r") as f:
+                structured_questions = f.read()
+            full_system_instruction = f"{system_prompt}\n\n{structured_questions}"
+        except Exception as e:
+            logger.error(f"Error loading prompts: {e}")
+            full_system_instruction = "You are a 911 dispatch assistant."
+
         # FIX 1: Use plain dicts for transcription config instead of non-existent class
         config = types.LiveConnectConfig(
-            system_instruction="You are a helpful math assistant. Be extremely concise. Help the user with their math problems. Always start the conversation by asking 'Hello, I am your math assistant. What problem can I help you with today?'",
+            system_instruction=full_system_instruction,
             response_modalities=["AUDIO"],
             input_audio_transcription={},
             output_audio_transcription={},
@@ -157,18 +248,19 @@ async def handle_media_stream(websocket: WebSocket):
             model="gemini-2.5-flash-native-audio-preview-12-2025",
             config=config
         ) as session:
-            logger.info("Connected to Gemini Live API")
+            logger.info(f"Connected to Gemini Live API for session {session_id}")
             
             # FIX 2: Use send_client_content for the initial text prompt
             await session.send_client_content(
                 turns=types.Content(
                     role="user",
-                    parts=[types.Part(text="A new user has connected. Please say 'Hello, I am your math assistant. What problem can I help you with today?' to start the conversation.")]
+                    parts=[types.Part(text="A new caller has connected to 911. Please say '911, what is your emergency?' and begin triage.")]
                 ),
                 turn_complete=True
             )
             
             audio_chunks_sent = 0
+            transcript_buffer = []
 
             async def receive_from_twilio():
                 nonlocal stream_sid, audio_chunks_sent
@@ -179,7 +271,7 @@ async def handle_media_stream(websocket: WebSocket):
                         
                         if data['event'] == 'start':
                             stream_sid = data['start']['streamSid']
-                            logger.info(f"Stream started: {stream_sid}")
+                            logger.info(f"Stream started: {stream_sid} for session: {session_id}")
                             
                         elif data['event'] == 'media':
                             # Twilio sends 8kHz µ-law
@@ -199,17 +291,17 @@ async def handle_media_stream(websocket: WebSocket):
                                 audio_chunks_sent += 1
                                 # Log every 500 chunks (~25 seconds of audio) to confirm flow
                                 if audio_chunks_sent % 500 == 0:
-                                    logger.info(f"Sent {audio_chunks_sent} audio chunks to Gemini")
+                                    logger.info(f"Sent {audio_chunks_sent} audio chunks to Gemini [{session_id}]")
                             except Exception as e:
-                                logger.error(f"Error sending audio to Gemini: {e}")
+                                logger.error(f"Error sending audio to Gemini [{session_id}]: {e}")
                             
                         elif data['event'] == 'stop':
-                            logger.info("Stream stopped by Twilio")
+                            logger.info(f"Stream stopped by Twilio [{session_id}]")
                             break
                 except WebSocketDisconnect:
-                    logger.warning("Twilio disconnected")
+                    logger.warning(f"Twilio disconnected [{session_id}]")
                 except Exception as e:
-                    logger.error(f"Error receiving from Twilio: {e}")
+                    logger.error(f"Error receiving from Twilio [{session_id}]: {e}")
 
             async def receive_from_gemini():
                 try:
@@ -222,7 +314,10 @@ async def handle_media_stream(websocket: WebSocket):
                                     if part.text:
                                         # Only log if it's not just a thinking/internal thought
                                         if not part.text.startswith("**"):
-                                            logger.info(f"Assistant: {part.text}")
+                                            logger.info(f"Assistant [{session_id}]: {part.text}")
+                                            transcript_buffer.append({"role": "agent", "text": part.text})
+                                            # Since DM agent is off, save to DB directly when agent speaks
+                                            asyncio.create_task(db.update_transcript(session_id, transcript_buffer))
                                     if part.inline_data and part.inline_data.data:
                                         # Gemini returns 24kHz PCM
                                         pcm_24k = part.inline_data.data
@@ -257,7 +352,12 @@ async def handle_media_stream(websocket: WebSocket):
                             # Handle input transcription (what the user said)
                             if response.server_content and hasattr(response.server_content, 'input_transcription') and response.server_content.input_transcription:
                                 if response.server_content.input_transcription.text:
-                                    logger.info(f"User: {response.server_content.input_transcription.text}")
+                                    text = response.server_content.input_transcription.text
+                                    logger.info(f"Caller [{session_id}]: {text}")
+                                    transcript_buffer.append({"role": "caller", "text": text})
+                                    # Since DM agent is off, we still want to save transcripts periodically or as they come in.
+                                    # We'll just trigger a DB save here for testing so you can see it!
+                                    asyncio.create_task(db.update_transcript(session_id, transcript_buffer))
                             
                             # Handle output transcription (what the model said)
                             if response.server_content and hasattr(response.server_content, 'output_transcription') and response.server_content.output_transcription:
@@ -271,12 +371,74 @@ async def handle_media_stream(websocket: WebSocket):
                 except Exception as e:
                     logger.error(f"Error receiving from Gemini: {e}")
 
-            # Run both tasks concurrently and stop when either finishes
+            async def run_decision_maker():
+                """Periodically analyze the transcript and update DB and Gemini."""
+                last_transcript_length = 0
+                last_actions = []
+                while True:
+                    await asyncio.sleep(10)
+                    if len(transcript_buffer) > last_transcript_length:
+                        last_transcript_length = len(transcript_buffer)
+                        transcript_text = "\n".join([f"{msg['role']}: {msg['text']}" for msg in transcript_buffer])
+                        
+                        prompt = f"""
+You are a 911 dispatch decision-making agent.
+Review the following call transcript and extract the caller's name, address, and any required emergency services to dispatch.
+If there's not enough information, leave the fields empty. Do not guess.
+Transcript:
+{transcript_text}
+"""
+                        try:
+                            start_time = datetime.now()
+                            # Use standard gemini-2.5-flash for text reasoning
+                            response = await gemini_client.aio.models.generate_content(
+                                model='gemini-2.5-flash',
+                                contents=prompt,
+                                config=types.GenerateContentConfig(
+                                    response_mime_type="application/json",
+                                    response_schema=DecisionMakerOutput,
+                                    temperature=0.0
+                                )
+                            )
+                            latency = (datetime.now() - start_time).total_seconds()
+                            result = json.loads(response.text)
+                            logger.info(f"DM Agent [{session_id}] (Latency: {latency:.2f}s): {result}")
+                            
+                            # Save to DB
+                            await db.update_transcript(session_id, transcript_buffer)
+                            await db.update_extracted_info(
+                                session_id, 
+                                caller_name=result.get("caller_name"), 
+                                address=result.get("address"), 
+                                actions=result.get("actions")
+                            )
+                            
+                            current_actions = result.get("actions", [])
+                            if current_actions and current_actions != last_actions:
+                                action_msg = f"SYSTEM ALERT: The DM agent has taken the following actions: {', '.join(current_actions)}. Subtly inform the caller that help is on the way."
+                                logger.info(f"Injecting to Gemini [{session_id}]: {action_msg}")
+                                await session.send_client_content(
+                                    turns=types.Content(
+                                        role="user",
+                                        parts=[types.Part(text=action_msg)]
+                                    ),
+                                    turn_complete=True
+                                )
+                                last_actions = current_actions
+                            
+                        except asyncio.CancelledError:
+                            break
+                        except Exception as e:
+                            logger.error(f"Error in DM agent for {session_id}: {e}")
+
+            # Run tasks concurrently and stop when either finishes
             task1 = asyncio.create_task(receive_from_twilio())
             task2 = asyncio.create_task(receive_from_gemini())
+            # Task 3 (DM agent) is temporarily commented out for testing
+            # task3 = asyncio.create_task(run_decision_maker())
             
             done, pending = await asyncio.wait(
-                [task1, task2],
+                [task1, task2], #, task3],
                 return_when=asyncio.FIRST_COMPLETED
             )
             
