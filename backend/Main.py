@@ -298,7 +298,7 @@ async def media_stream(websocket: WebSocket):
         conversation = Conversation(
             client=eleven_labs_client,
             agent_id=AGENT_ID,
-            requires_auth=True,
+            requires_auth=False,
             audio_interface=audio_interface,
             callback_agent_response=on_agent_response,
             callback_user_transcript=on_user_transcript,
