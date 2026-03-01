@@ -21,8 +21,8 @@ from elevenlabs.conversational_ai.conversation import Conversation
 from twilio_audio_interface import TwilioAudioInterface
 import traceback
 
-# Load .env from the same directory as this file
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+# Load .env from the same directory as this file, override existing variables
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
 
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 AGENT_ID = os.getenv("ELEVENLABS_AGENT_ID")

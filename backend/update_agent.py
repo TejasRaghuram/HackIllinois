@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from elevenlabs.client import ElevenLabs
 
 # Load .env file
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
 
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 AGENT_ID = os.getenv("ELEVENLABS_AGENT_ID")
