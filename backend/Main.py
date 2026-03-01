@@ -11,7 +11,7 @@ from collections import deque
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-import backend.database as db
+import database as db
 
 import audioop
 from google import genai
