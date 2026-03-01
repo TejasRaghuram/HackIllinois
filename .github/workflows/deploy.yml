@@ -1,18 +1,19 @@
-name: Deploy to DigitalOcean
+name: Deploy Application
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
-  deploy:
+  deploy-backend:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy to DigitalOcean via SSH
+      - name: Deploy Backend to DigitalOcean
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DROPLET_HOST }}
@@ -26,7 +27,6 @@ jobs:
             # Navigate to app directory (or clone if it doesn't exist)
             APP_DIR="/root/HackIllinois"
             if [ ! -d "$APP_DIR" ]; then
-              # Using public URL for cloning to avoid auth issues if repo is public
               git clone https://github.com/${{ github.repository }}.git "$APP_DIR"
             fi
             cd "$APP_DIR"
@@ -42,7 +42,7 @@ jobs:
             source venv/bin/activate
             pip install -r requirements.txt
 
-            # Create a systemd service
+            # Create a systemd service for Backend
             cat > /etc/systemd/system/hackillinois.service << 'EOF'
             [Unit]
             Description=HackIllinois Backend
@@ -59,7 +59,68 @@ jobs:
             EOF
 
             systemctl daemon-reload
-            # Kill any process currently holding port 8000 to prevent "Address already in use"
+            # Kill any process currently holding port 8000
             fuser -k 8000/tcp || true
             systemctl restart hackillinois
             systemctl enable hackillinois
+
+  deploy-frontend:
+    needs: deploy-backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Client Dependencies
+        working-directory: ./client
+        run: npm install
+
+      - name: Build Client
+        working-directory: ./client
+        env:
+          REACT_APP_MAPBOXGL_API_KEY: ${{ secrets.REACT_APP_MAPBOXGL_API_KEY }}
+        run: npm run build
+
+      - name: Copy Built React App to Server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USERNAME }}
+          password: ${{ secrets.DROPLET_PASSWORD }}
+          source: "client/build/*"
+          target: "/root/HackIllinois/client/build/"
+          strip_components: 2
+
+      - name: Start Frontend Service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USERNAME }}
+          password: ${{ secrets.DROPLET_PASSWORD }}
+          script: |
+            # Create a systemd service for the Frontend (using Python's http.server as a simple static host)
+            cat > /etc/systemd/system/hackillinois-frontend.service << 'EOF'
+            [Unit]
+            Description=HackIllinois React Frontend
+            After=network.target
+
+            [Service]
+            WorkingDirectory=/root/HackIllinois/client/build
+            ExecStart=/usr/bin/python3 -m http.server 3000
+            Restart=always
+            RestartSec=3
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            systemctl daemon-reload
+            # Kill any process currently holding port 3000
+            fuser -k 3000/tcp || true
+            systemctl restart hackillinois-frontend
+            systemctl enable hackillinois-frontend
