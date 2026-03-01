@@ -25,7 +25,7 @@ vllm_cache_volume = modal.Volume.from_name("llm-vllm-cache", create_if_missing=T
 )
 @modal.web_server(port=8000, startup_timeout=300)
 def serve():
-    cmd = [
+        cmd = [
         sys.executable, "-m", "vllm.entrypoints.openai.api_server",
         "--model", "Qwen/Qwen2.5-3B-Instruct",
         "--host", "0.0.0.0",
@@ -33,6 +33,7 @@ def serve():
         "--max-model-len", "2048",
         "--gpu-memory-utilization", "0.85",
         "--enforce-eager",
-        "--dtype", "bfloat16"
+        "--dtype", "bfloat16",
+        "--cors-allowed-origins", "*"
     ]
     subprocess.Popen(cmd).wait()

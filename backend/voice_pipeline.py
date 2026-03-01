@@ -73,9 +73,18 @@ class VoicePipeline:
     @modal.asgi_app()
     def asgi_app(self):
         from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+        from fastapi.middleware.cors import CORSMiddleware
         import httpx
 
         web_app = FastAPI()
+
+        web_app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
         try:
             llm_function = modal.Function.from_name("hackillinois-llm", "serve")

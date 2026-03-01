@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect, Form
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from twilio.twiml.voice_response import VoiceResponse, Connect, Stream
 import json
 import asyncio
@@ -39,6 +40,15 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+
+# Add CORS middleware to allow all origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- Logging Setup ---
 # Store the last 1000 logs in memory
