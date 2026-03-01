@@ -146,9 +146,8 @@ async def view_sessions():
 
 # --- App Endpoints ---
 
-@app.get("/database")
-async def get_database():
-    """Return the entire database as JSON with session_id as keys."""
+async def _get_database_json():
+    """Helper to fetch and serialize the database for HTTP or WebSocket."""
     sessions = await db.get_all_sessions()
     result = {}
     for s in sessions:
@@ -176,6 +175,30 @@ async def get_database():
         result[session_data['session_id']] = session_data
         
     return result
+
+@app.get("/database")
+async def get_database():
+    """Return the entire database as JSON with session_id as keys."""
+    return await _get_database_json()
+
+@app.websocket("/database-stream")
+async def database_stream(websocket: WebSocket):
+    """Livestream the entire database as JSON to a connected client."""
+    await websocket.accept()
+    logger.info("Client connected to /database-stream")
+    try:
+        while True:
+            db_json = await _get_database_json()
+            await websocket.send_json(db_json)
+            await asyncio.sleep(1) # Broadcast updates every 1 second
+    except WebSocketDisconnect:
+        logger.info("Client disconnected from /database-stream")
+    except Exception as e:
+        logger.error(f"Error in /database-stream: {e}")
+        try:
+            await websocket.close()
+        except:
+            pass
 
 @app.get("/hello")
 def read_hello():

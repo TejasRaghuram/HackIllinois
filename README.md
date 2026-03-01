@@ -9,6 +9,7 @@ Welcome to the HackIllinois Autonomous 911 Dispatch Agent API. This backend serv
 | Method | Endpoint | Description | Response Type |
 |--------|----------|-------------|---------------|
 | `GET` | `/database` | Returns the entire sessions database as a JSON object, keyed by `session_id`. Each record includes the caller details, extracted location, required actions, real-time parsed transcripts, and a boolean `is_active` flag. | `application/json` |
+| `WS` | `/database-stream` | A WebSocket endpoint that livestreams the exact same JSON payload as `/database`, pushing updates once every second. Perfect for live-updating UI dashboards without polling. | `WebSocket (JSON)` |
 
 ---
 
