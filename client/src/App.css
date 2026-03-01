@@ -1,0 +1,312 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&display=swap');
+
+body, #app {
+  height: 100vh;
+  margin: 0;
+  background-color: #121212;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+}
+
+* {
+  color: white;
+  font-family: 'IBM Plex Sans';
+  margin: 0;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  padding-bottom: 5px;
+}
+
+#branding {
+  display: flex;
+  align-items: center;
+}
+
+#branding img {
+  width: 40px;
+  height: 40px;
+  background-color: magenta;
+}
+
+#branding p {
+  margin-left: 10px;
+}
+
+#content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  padding-top: 0px;
+}
+
+#main {
+  display: flex;
+}
+
+#map {
+  height: 500px;
+  margin-right: 5px;
+  flex: 1;
+  border-style: solid;
+  border-radius: 5px;
+  border-width: 2px;
+  border-color: #707070;
+  overflow: hidden;
+}
+
+#calls {
+  width: 400px;
+  height: 500px;
+  margin-left: 5px;
+  border-style: solid;
+  border-radius: 5px;
+  border-width: 2px;
+  border-color: #707070;
+  overflow-y: scroll;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.calls::-webkit-scrollbar {
+  display: none;
+}
+
+#call {
+  width: calc(100% - 20px);
+  height: 80px;
+  margin-left: 5px;
+  margin-right: 5px;
+  margin-top: 5px;
+  padding: 5px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-style: solid;
+  border-width: 1px;
+  border-color: rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  transition: 0.25s;
+  position: relative;
+}
+
+#call:hover {
+  cursor: pointer;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+#number {
+  margin-left: 5px;
+  font-weight: bold;
+  font-size: 24px;
+  display: inline-block;
+}
+
+.flash {
+  width: 5px;
+  height: 5px;
+  margin-left: 2px;
+  margin-right: 7px;
+  position: relative;
+  bottom: 2px;
+  display: inline-block;
+  border-radius: 10px;
+  animation: flash 2s infinite;
+}
+
+.large {
+  width: 20px;
+  height: 20px;
+}
+
+#severity {
+  padding-left: 10px;
+  padding-right: 10px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  font-size: 14px;
+  border-style: solid;
+  border-width: 2px;
+  border-radius: 30px;
+  display: inline-block;
+  position: absolute;
+  right: 5px;
+}
+
+.red {
+  color: rgb(255, 75, 75);
+  background-color: rgb(255, 75, 75);
+}
+
+.red-bg {
+  background-color: rgba(100, 0, 0, 0.5)
+}
+
+#situation {
+  margin-left: 5px;
+  font-size: 14px;
+}
+
+#address {
+  font-style: italic;
+  opacity: 0.5;
+}
+
+#transcript {
+  margin-left: 5px;
+  margin-right: 5px;
+  margin-top: 5px;
+  font-size: 14px;
+  white-space: nowrap;
+  font-style: italic;
+  overflow-x: hidden;
+}
+
+#info {
+  margin-top: 10px;
+  height: 315px;
+  border-style: solid;
+  border-radius: 5px;
+  border-width: 2px;
+  border-color: #707070;
+  display: flex;
+  flex-direction: row;
+}
+
+#ticket {
+  width: 290px;
+  height: calc(100% - 21px);
+  margin-left: 5px;
+  margin-top: 5px;
+  padding: 5px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-style: solid;
+  border-width: 1px;
+  border-color: rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  position: relative;
+}
+
+#ticket h3 {
+  font-size: 16px;
+}
+
+#ticket .title {
+  font-weight: bold;
+  text-decoration: underline;
+}
+
+#ticket .subtitle {
+  text-align: left;
+  font-weight: bold;
+  color: #aaaaaa;
+  display: inline-block;
+  position: relative;
+  bottom: 2px;
+}
+
+#ticket .info {
+  position: absolute;
+  right: 5px;
+}
+
+#ticket p {
+  font-size: 14px;
+  display: inline-block;
+}
+
+#actions {
+  width: 390px;
+  height: calc(100% - 10px);
+  padding: 5px;
+  display: grid;
+  gap: 5px;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+#actions button {
+  border: none;
+  border-radius: 5px;
+  font-size: 14px;
+  transition: 0.2s;
+}
+
+#actions button:hover {
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+#actions img {
+  width: 50px;
+  height: 50px;
+}
+
+#police {
+  background-color: #3B82F6;
+}
+
+#ambulance {
+  background-color: #22C55E;
+}
+
+#firetruck {
+  background-color: #EF4444;
+}
+
+#drone {
+  background-color: #dfae1a;
+}
+
+#extended-transcript {
+  margin-left: 0;
+  margin-bottom: 5px;
+  padding: 5px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-style: solid;
+  border-width: 1px;
+  border-color: rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  flex: 1;
+}
+
+#extended-transcript h3 {
+  font-style: normal;
+  font-size: 16px;
+}
+
+#extended-transcript .content {
+  height: 275px;
+  overflow-y: scroll;
+}
+
+.chat-entry {
+  display: flex;
+  padding: 2px 0;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.chat-entry .speaker {
+  font-weight: bold;
+  min-width: 90px;
+  color: #a5a5a5;
+  flex-shrink: 0;
+}
+
+.chat-entry .message {
+  flex: 1;
+  white-space: normal;
+  word-break: break-word;
+}
+
+@keyframes flash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
