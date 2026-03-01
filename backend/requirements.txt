@@ -6,3 +6,4 @@ python-dotenv
 google-genai
 aiosqlite
 pydantic
+python-multipart
