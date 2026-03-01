@@ -262,37 +262,42 @@ async def media_stream(websocket: WebSocket):
     elevenlabs_ws = None
 
     try:
-        # 1. Get initial message to extract call_id and streamSid
-        init_data = await websocket.receive_text()
-        init_msg = json.loads(init_data)
-        
-        if init_msg.get("event") == "start":
-            stream_sid = init_msg["start"]["streamSid"]
-            call_id = init_msg["start"].get("customParameters", {}).get("call_id")
-            if not call_id:
-                call_id = init_msg["start"].get("callSid", f"unknown_{int(datetime.now().timestamp())}")
-            logger.info(f"[Twilio] Stream started - StreamSid: {stream_sid}, CallId: {call_id}")
-        else:
-            logger.warning(f"[Twilio] Expected 'start' event, got: {init_msg.get('event')}")
-            call_id = f"unknown_{int(datetime.now().timestamp())}"
+        # 1. Wait for the 'start' event from Twilio.
+        #    Twilio sends 'connected' first, then 'start' — we must consume both.
+        while True:
+            init_data = await websocket.receive_text()
+            init_msg = json.loads(init_data)
+            event_type = init_msg.get("event")
+            logger.debug(f"[Twilio] Init phase event: {event_type}")
+
+            if event_type == "connected":
+                logger.info("[Twilio] 'connected' event received, waiting for 'start'...")
+                continue
+            elif event_type == "start":
+                stream_sid = init_msg["start"]["streamSid"]
+                call_id = init_msg["start"].get("customParameters", {}).get("call_id")
+                if not call_id:
+                    call_id = init_msg["start"].get("callSid", f"unknown_{int(datetime.now().timestamp())}")
+                logger.info(f"[Twilio] Stream started - StreamSid: {stream_sid}, CallId: {call_id}")
+                break
+            else:
+                logger.warning(f"[Twilio] Unexpected event during init: {event_type}")
+                continue
 
         # 2. Connect to ElevenLabs
         signed_url = await get_elevenlabs_signed_url()
+        logger.info(f"[ElevenLabs] Got signed URL, connecting for call {call_id}...")
         elevenlabs_ws = await websockets.connect(signed_url)
         logger.info(f"[ElevenLabs] Connected to Conversational AI for call {call_id}")
 
         # 3. Create bidirectional forwarding tasks
         async def twilio_to_elevenlabs():
+            """Forward audio from Twilio -> ElevenLabs."""
             try:
-                # Handle the first message we already popped (if it had media)
-                if init_msg.get("event") == "media":
-                    audio_payload = init_msg["media"]["payload"]
-                    await elevenlabs_ws.send(json.dumps({"user_audio_chunk": audio_payload}))
-                
                 while True:
                     data = await websocket.receive_text()
                     msg = json.loads(data)
-                    
+
                     if msg.get("event") == "media":
                         audio_payload = msg["media"]["payload"]
                         await elevenlabs_ws.send(json.dumps({
@@ -304,16 +309,19 @@ async def media_stream(websocket: WebSocket):
             except WebSocketDisconnect:
                 logger.info("[Twilio] Client disconnected")
             except Exception as e:
-                logger.error(f"[Twilio to ElevenLabs] Error: {e}", exc_info=True)
+                logger.error(f"[Twilio -> ElevenLabs] Error: {e}", exc_info=True)
 
         async def elevenlabs_to_twilio():
+            """Forward audio + capture transcripts from ElevenLabs -> Twilio."""
             try:
                 async for data in elevenlabs_ws:
                     msg = json.loads(data)
                     msg_type = msg.get("type")
-                    
-                    if msg_type == "audio":
-                        # Forward audio back to Twilio
+
+                    if msg_type == "conversation_initiation_metadata":
+                        logger.info("[ElevenLabs] Conversation initiation metadata received")
+
+                    elif msg_type == "audio":
                         chunk = msg.get("audio", {}).get("chunk")
                         if not chunk:
                             chunk = msg.get("audio_event", {}).get("audio_base_64")
@@ -321,19 +329,16 @@ async def media_stream(websocket: WebSocket):
                             await websocket.send_text(json.dumps({
                                 "event": "media",
                                 "streamSid": stream_sid,
-                                "media": {
-                                    "payload": chunk
-                                }
+                                "media": {"payload": chunk}
                             }))
-                            
+
                     elif msg_type == "interruption":
-                        # Clear Twilio's audio queue
                         if stream_sid:
                             await websocket.send_text(json.dumps({
                                 "event": "clear",
                                 "streamSid": stream_sid
                             }))
-                            
+
                     elif msg_type == "ping":
                         event_id = msg.get("ping_event", {}).get("event_id")
                         if event_id:
@@ -341,25 +346,28 @@ async def media_stream(websocket: WebSocket):
                                 "type": "pong",
                                 "event_id": event_id
                             }))
-                            
+
                     elif msg_type == "user_transcript":
-                        transcript = msg.get("user_transcription_event", {}).get("user_transcript")
-                        if transcript and call_id:
-                            logger.info(f"[Live Transcript] Caller: {transcript}")
-                            await db.append_transcript(call_id, "caller", transcript)
-                            
+                        transcript_text = msg.get("user_transcription_event", {}).get("user_transcript")
+                        if transcript_text and call_id:
+                            logger.info(f"[Transcript] Caller: {transcript_text}")
+                            await db.append_transcript(call_id, "caller", transcript_text)
+
                     elif msg_type == "agent_response":
-                        response = msg.get("agent_response_event", {}).get("agent_response")
-                        if response and call_id:
-                            logger.info(f"[Live Transcript] Agent: {response}")
-                            await db.append_transcript(call_id, "agent", response)
+                        response_text = msg.get("agent_response_event", {}).get("agent_response")
+                        if response_text and call_id:
+                            logger.info(f"[Transcript] Agent: {response_text}")
+                            await db.append_transcript(call_id, "agent", response_text)
+
+                    else:
+                        logger.debug(f"[ElevenLabs] Unhandled message type: {msg_type}")
 
             except websockets.exceptions.ConnectionClosed:
                 logger.info("[ElevenLabs] WebSocket closed")
             except Exception as e:
-                logger.error(f"[ElevenLabs to Twilio] Error: {e}", exc_info=True)
+                logger.error(f"[ElevenLabs -> Twilio] Error: {e}", exc_info=True)
 
-        # Run both tasks concurrently
+        # Run both tasks concurrently; when either finishes the call is over
         await asyncio.gather(
             twilio_to_elevenlabs(),
             elevenlabs_to_twilio(),
@@ -367,14 +375,12 @@ async def media_stream(websocket: WebSocket):
         )
 
     except Exception as e:
-        logger.error(f"Error in media_stream: {e}", exc_info=True)
+        logger.error(f"[media-stream] Error: {e}", exc_info=True)
     finally:
-        # Mark call inactive as soon as ANY connection drops
         if call_id:
             await db.set_call_inactive(call_id)
-            logger.info(f"Call {call_id} marked as inactive due to disconnect.")
+            logger.info(f"[media-stream] Call {call_id} marked inactive (disconnect).")
 
-        # Cleanup connections
         if elevenlabs_ws and not elevenlabs_ws.closed:
             try:
                 await elevenlabs_ws.close()
