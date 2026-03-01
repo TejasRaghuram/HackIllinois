@@ -6,6 +6,7 @@ import Police from './images/police.png';
 import Ambulance from './images/ambulance.png';
 import Firetruck from './images/firetruck.png';
 import Drone from './images/drone.png';
+import Logo from './images/Logo.png';
 
 function App() {
 
@@ -49,31 +50,31 @@ function App() {
   }, []);
 
   const POINTS = [
-  { id: 1, lngLat: [-88.211105, 40.113159], title: 'Downtown' },
-  { id: 2, lngLat: [-88.2433, 40.1122], title: 'Incident' },
-];
+    { id: 1, lngLat: [-88.211105, 40.113159], title: 'Downtown' },
+    { id: 2, lngLat: [-88.2433, 40.1122], title: 'Incident' },
+  ];
 
-useEffect(() => {
-  if (!mapRef.current) return;
+  useEffect(() => {
+    if (!mapRef.current) return;
 
-  const markers = POINTS.map((pt) => {
-    const el = document.createElement('div');
-    el.className = 'red flash large';
-    el.title = pt.title;
+    const markers = POINTS.map((pt) => {
+      const el = document.createElement('div');
+      el.className = 'red flash large';
+      el.title = pt.title;
 
-    return new mapboxgl.Marker(el)
-      .setLngLat(pt.lngLat)
-      .addTo(mapRef.current);
-  });
+      return new mapboxgl.Marker(el)
+        .setLngLat(pt.lngLat)
+        .addTo(mapRef.current);
+    });
 
-  return () => markers.forEach(m => m.remove());
-}, []);
+    return () => markers.forEach(m => m.remove());
+  }, []);
 
   return (
     <div id="app">
       <header>
         <div id="branding">
-          <img/>
+          <img src={Logo}/>
           <p>HackIllinois</p>
         </div>
         <p>{date.toLocaleString("en-US", format).replace(/\bat\b/g, "\u00a0")}</p>
@@ -127,22 +128,78 @@ useEffect(() => {
             <p className="info">Police</p><br/>
           </div>
           <div id="actions">
-            <button id="police">
+            <button id="police" onClick={async () => {
+              const res = await fetch(
+                "https://911-hackillinois-1832.twil.io/welcome",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                  },
+                  body: new URLSearchParams({
+                    to: "+17328237778",
+                    body: "Police",
+                  }),
+                }
+              );
+            }}>
               <img src={Police}/>
               <br/>
               Police
             </button>
-            <button id="ambulance">
+            <button id="ambulance" onClick={async () => {
+              const res = await fetch(
+                "https://911-hackillinois-1832.twil.io/welcome",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                  },
+                  body: new URLSearchParams({
+                    to: "+17328237778",
+                    body: "Ambulance",
+                  }),
+                }
+              );
+            }}>
               <img src={Ambulance}/>
               <br/>
               Ambulance
             </button>
-            <button id="firetruck">
+            <button id="firetruck" onClick={async () => {
+              const res = await fetch(
+                "https://911-hackillinois-1832.twil.io/welcome",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                  },
+                  body: new URLSearchParams({
+                    to: "+17328237778",
+                    body: "Firetruck",
+                  }),
+                }
+              );
+            }}>
               <img src={Firetruck}/>
               <br/>
               Fire Truck
             </button>
-            <button id="drone">
+            <button id="drone" onClick={async () => {
+              const res = await fetch(
+                "https://911-hackillinois-1832.twil.io/welcome",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                  },
+                  body: new URLSearchParams({
+                    to: "+17328237778",
+                    body: "Drone",
+                  }),
+                }
+              );
+            }}>
               <img src={Drone}/>
               <br/>
               Drone Unit

@@ -31,9 +31,8 @@ header {
 }
 
 #branding img {
-  width: 40px;
-  height: 40px;
-  background-color: magenta;
+  max-width: 40px;
+  max-height: 40px;
 }
 
 #branding p {
@@ -266,6 +265,8 @@ header {
 
 #extended-transcript {
   margin-left: 0;
+  margin-right: 5px;
+  margin-top: 5px;
   margin-bottom: 5px;
   padding: 5px;
   background-color: rgba(255, 255, 255, 0.05);
