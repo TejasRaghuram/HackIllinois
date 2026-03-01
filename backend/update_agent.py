@@ -122,6 +122,9 @@ If you are unsure about how to handle a situation, consult with a supervisor.
     config_dict = agent.conversation_config.model_dump()
     config_dict["agent"]["prompt"]["prompt"] = new_prompt
     
+    # Also explicitly set the first message so the new account uses the correct 911 greeting
+    config_dict["agent"]["first_message"] = "911, what is your emergency?"
+    
     # Send the update request
     updated_agent = client.conversational_ai.agents.update(
         agent_id=AGENT_ID,
