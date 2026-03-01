@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect, Form
+from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from twilio.twiml.voice_response import VoiceResponse, Connect, Stream
@@ -21,24 +21,17 @@ from elevenlabs.conversational_ai.conversation import Conversation
 from twilio_audio_interface import TwilioAudioInterface
 import traceback
 
-print("=" * 60, flush=True)
-print(">>> MAIN.PY LOADED — NEW CODE IS RUNNING <<<", flush=True)
-print("=" * 60, flush=True)
-
 # Load .env from the same directory as this file
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 AGENT_ID = os.getenv("ELEVENLABS_AGENT_ID")
 
-print(f">>> AGENT_ID = {AGENT_ID}", flush=True)
-print(f">>> API_KEY loaded = {bool(ELEVENLABS_API_KEY)}", flush=True)
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print(">>> LIFESPAN: Initializing database...", flush=True)
+    logger.info("LIFESPAN: Initializing database...")
     await db.init_db()
-    print(">>> LIFESPAN: Database initialized. Server is ready.", flush=True)
+    logger.info("LIFESPAN: Database initialized. Server is ready.")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -227,7 +220,6 @@ def read_hello():
 @app.api_route("/voice", methods=["GET", "POST"])
 async def voice(request: Request):
     """Handle incoming calls and connect them to our AI stream."""
-    print(f">>> /voice HIT — method={request.method}", flush=True)
     logger.info(f"Incoming {request.method} call received at /voice")
 
     try:
@@ -271,7 +263,6 @@ async def voice(request: Request):
 async def media_stream(websocket: WebSocket):
     """WebSocket endpoint for Twilio media streams, using the official ElevenLabs SDK."""
     await websocket.accept()
-    print(">>> /media-stream WEBSOCKET CONNECTED", flush=True)
     logger.info("[Server] Twilio connected to media stream")
 
     call_id = None
