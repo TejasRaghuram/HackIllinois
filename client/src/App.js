@@ -6,6 +6,7 @@ import Police from './images/police.png';
 import Ambulance from './images/ambulance.png';
 import Firetruck from './images/firetruck.png';
 import Drone from './images/drone.png';
+import Logo from './images/Logo.png';
 
 function App() {
 
@@ -73,7 +74,7 @@ function App() {
     <div id="app">
       <header>
         <div id="branding">
-          <img alt="HackIllinois Logo" />
+          <img src={Logo}/>
           <p>HackIllinois</p>
         </div>
         <p>{date.toLocaleString("en-US", format).replace(/\bat\b/g, "\u00a0")}</p>
@@ -127,23 +128,79 @@ function App() {
             <p className="info">Police</p><br/>
           </div>
           <div id="actions">
-            <button id="police">
-              <img src={Police} alt="Police" />
+            <button id="police" onClick={async () => {
+              const res = await fetch(
+                "https://911-hackillinois-1832.twil.io/welcome",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                  },
+                  body: new URLSearchParams({
+                    to: "+17328237778",
+                    body: "Police",
+                  }),
+                }
+              );
+            }}>
+              <img src={Police}/>
               <br/>
               Police
             </button>
-            <button id="ambulance">
-              <img src={Ambulance} alt="Ambulance" />
+            <button id="ambulance" onClick={async () => {
+              const res = await fetch(
+                "https://911-hackillinois-1832.twil.io/welcome",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                  },
+                  body: new URLSearchParams({
+                    to: "+17328237778",
+                    body: "Ambulance",
+                  }),
+                }
+              );
+            }}>
+              <img src={Ambulance}/>
               <br/>
               Ambulance
             </button>
-            <button id="firetruck">
-              <img src={Firetruck} alt="Fire Truck" />
+            <button id="firetruck" onClick={async () => {
+              const res = await fetch(
+                "https://911-hackillinois-1832.twil.io/welcome",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                  },
+                  body: new URLSearchParams({
+                    to: "+17328237778",
+                    body: "Firetruck",
+                  }),
+                }
+              );
+            }}>
+              <img src={Firetruck}/>
               <br/>
               Fire Truck
             </button>
-            <button id="drone">
-              <img src={Drone} alt="Drone Unit" />
+            <button id="drone" onClick={async () => {
+              const res = await fetch(
+                "https://911-hackillinois-1832.twil.io/welcome",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                  },
+                  body: new URLSearchParams({
+                    to: "+17328237778",
+                    body: "Drone",
+                  }),
+                }
+              );
+            }}>
+              <img src={Drone}/>
               <br/>
               Drone Unit
             </button>
