@@ -40,7 +40,60 @@ jobs:
           REACT_APP_MAPBOXGL_API_KEY: ${{ secrets.REACT_APP_MAPBOXGL_API_KEY }}
         run: npm run build
 
-      # TODO: Add specific deployment steps for your hosting provider here
-      - name: Deploy Backend and Frontend
-        run: |
-          echo "Add deployment commands for your platform (Render, DigitalOcean, Vercel, Heroku, etc.) here."
+      - name: Deploy to DigitalOcean via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USERNAME }}
+          password: ${{ secrets.DROPLET_PASSWORD }}
+          script: |
+            # Update and install dependencies
+            apt-get update
+            apt-get install -y python3-pip python3-venv git nodejs npm
+
+            # Navigate to app directory (or clone if it doesn't exist)
+            APP_DIR="/root/HackIllinois"
+            if [ ! -d "$APP_DIR" ]; then
+              # Using public URL for cloning to avoid auth issues if repo is public
+              git clone https://github.com/${{ github.repository }}.git "$APP_DIR"
+            fi
+            cd "$APP_DIR"
+            
+            # Reset and pull to ensure we are on the latest main
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Build Client
+            cd client
+            npm install
+            REACT_APP_MAPBOXGL_API_KEY=${{ secrets.REACT_APP_MAPBOXGL_API_KEY }} npm run build
+            cd ..
+
+            # Setup backend
+            cd backend
+            rm -f sessions.db
+            python3 -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+
+            # Create a systemd service
+            cat > /etc/systemd/system/hackillinois.service << 'EOF'
+            [Unit]
+            Description=HackIllinois Backend
+            After=network.target
+
+            [Service]
+            WorkingDirectory=/root/HackIllinois/backend
+            ExecStart=/root/HackIllinois/backend/venv/bin/python3 -m uvicorn Main:app --host 0.0.0.0 --port 80
+            Restart=always
+            RestartSec=3
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            systemctl daemon-reload
+            # Kill any process currently holding port 80 to prevent "Address already in use"
+            fuser -k 80/tcp || true
+            systemctl restart hackillinois
+            systemctl enable hackillinois
