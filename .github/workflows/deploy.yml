@@ -37,10 +37,18 @@ jobs:
 
             # Setup backend
             cd backend
-            rm -f sessions.db
             python3 -m venv venv
             source venv/bin/activate
             pip install -r requirements.txt
+
+            # Write .env from GitHub secrets
+            cat > .env << ENVEOF
+            ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}
+            ELEVENLABS_AGENT_ID=${{ secrets.ELEVENLABS_AGENT_ID }}
+            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+            MODAL_TOKEN_ID=${{ secrets.MODAL_TOKEN_ID }}
+            MODAL_TOKEN_SECRET=${{ secrets.MODAL_TOKEN_SECRET }}
+            ENVEOF
 
             # Create a systemd service for Backend
             cat > /etc/systemd/system/hackillinois.service << 'EOF'
