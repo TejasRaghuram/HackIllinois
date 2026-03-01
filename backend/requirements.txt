@@ -5,4 +5,4 @@ python-dotenv
 aiosqlite
 python-multipart
 httpx
-websockets
+elevenlabs
