@@ -12,19 +12,19 @@ from contextlib import asynccontextmanager
 import database as db
 
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
-from elevenlabs import ElevenLabs
 import httpx
+import websockets
 
 # Load .env from the same directory as this file
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+AGENT_ID = os.getenv("ELEVENLABS_AGENT_ID")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db.init_db()
     yield
-
 
 app = FastAPI(lifespan=lifespan)
 
@@ -32,12 +32,10 @@ app = FastAPI(lifespan=lifespan)
 # Store the last 1000 logs in memory
 log_history = deque(maxlen=1000)
 
-
 class MemoryLogHandler(logging.Handler):
     def emit(self, record):
         log_entry = self.format(record)
         log_history.append(log_entry)
-
 
 # Configure the logger
 logger = logging.getLogger("hackillinois")
@@ -57,14 +55,12 @@ memory_handler.setFormatter(
 )
 logger.addHandler(memory_handler)
 
-
 @app.get("/logs/clear")
 async def clear_logs():
     """Clear the log history."""
     log_history.clear()
     # Redirect back to logs page
     return Response(status_code=302, headers={"Location": "/logs"})
-
 
 @app.get("/logs", response_class=HTMLResponse)
 async def view_logs():
@@ -99,11 +95,10 @@ async def view_logs():
     """
     return html_content
 
-
 @app.get("/sessions", response_class=HTMLResponse)
 async def view_sessions():
     """View all stored sessions and their transcripts live."""
-    sessions = await db.get_all_sessions()
+    sessions = await db.get_all_calls()
 
     html = """
     <html>
@@ -129,11 +124,11 @@ async def view_sessions():
         html += "<p>No active sessions found in database.</p>"
 
     for s in sessions:
+        status = "Active" if s.get("is_active") else "Ended"
         html += f"""
         <div class="session">
-            <h2>Session: {s["session_id"]}</h2>
-            <p><strong>Phone:</strong> {s["phone_number"]} | <strong>Name:</strong> {s.get("caller_name") or "Pending"} | <strong>Address:</strong> {s.get("address") or "Pending"}</p>
-            <p><strong>Actions Taken:</strong> {s.get("actions") or "None"}</p>
+            <h2>Call ID: {s["call_id"]} [{status}]</h2>
+            <p><strong>Phone:</strong> {s["phone_number"]} </p>
             <h3>Live Transcript:</h3>
             <pre>"""
 
@@ -152,48 +147,34 @@ async def view_sessions():
     html += "</body></html>"
     return html
 
-
 # --- App Endpoints ---
-
 
 async def _get_database_json():
     """Helper to fetch and serialize the database for HTTP or WebSocket."""
-    sessions = await db.get_all_sessions()
+    calls = await db.get_all_calls()
     result = {}
-    for s in sessions:
-        session_data = dict(s)
-        # Force conversion to True/False explicitly using boolean logic against integers
-        is_active_val = session_data.get("is_active")
+    for c in calls:
+        call_data = dict(c)
+        is_active_val = call_data.get("is_active")
         if is_active_val is None:
-            session_data["is_active"] = False
+            call_data["is_active"] = False
         else:
-            session_data["is_active"] = bool(int(is_active_val))
+            call_data["is_active"] = bool(int(is_active_val))
 
-        # Parse JSON strings if possible
-        if session_data.get("transcript") and isinstance(
-            session_data["transcript"], str
-        ):
+        if call_data.get("transcript") and isinstance(call_data["transcript"], str):
             try:
-                session_data["transcript"] = json.loads(session_data["transcript"])
+                call_data["transcript"] = json.loads(call_data["transcript"])
             except json.JSONDecodeError:
                 pass
 
-        if session_data.get("actions") and isinstance(session_data["actions"], str):
-            try:
-                session_data["actions"] = json.loads(session_data["actions"])
-            except json.JSONDecodeError:
-                pass
-
-        result[session_data["session_id"]] = session_data
+        result[call_data["call_id"]] = call_data
 
     return result
 
-
 @app.get("/database")
 async def get_database():
-    """Return the entire database as JSON with session_id as keys."""
+    """Return the entire database as JSON with call_id as keys."""
     return await _get_database_json()
-
 
 @app.websocket("/database-stream")
 async def database_stream(websocket: WebSocket):
@@ -214,131 +195,192 @@ async def database_stream(websocket: WebSocket):
         except:
             pass
 
-
 @app.get("/hello")
 def read_hello():
     logger.info("GET /hello was called")
     return {"message": "hello worlds!!!!!!!!"}
-
 
 @app.api_route("/voice", methods=["GET", "POST"])
 async def voice(request: Request):
     """Handle incoming calls and connect them to our AI stream."""
     logger.info(f"Incoming {request.method} call received at /voice")
 
-    # Extract form data or query params to get caller information
     try:
         if request.method == "POST":
             form_data = await request.form()
             call_sid = form_data.get("CallSid")
             caller_phone = form_data.get("From")
-            to_number = form_data.get("To")
         else:
             call_sid = request.query_params.get("CallSid")
             caller_phone = request.query_params.get("From")
-            to_number = request.query_params.get("To")
 
         if not call_sid:
             call_sid = f"unknown_{int(datetime.now().timestamp())}"
         if not caller_phone:
             caller_phone = "unknown"
-        if not to_number:
-            to_number = "unknown"
     except Exception as e:
         logger.error(f"Error parsing request data: {e}", exc_info=True)
         call_sid = f"unknown_{int(datetime.now().timestamp())}"
         caller_phone = "unknown"
-        to_number = "unknown"
 
-    logger.info(f"Session started: {call_sid} from {caller_phone} to {to_number}")
+    logger.info(f"Call started: {call_sid} from {caller_phone}")
     # Create DB session
-    await db.create_session(call_sid, caller_phone)
+    await db.create_call(call_sid, caller_phone)
+
+    # Return TwiML that connects to our WebSocket
+    response = VoiceResponse()
+    connect = Connect()
+    host = request.headers.get("host", "localhost:8000")
+    
+    # Render Stream URL based on the request host
+    stream_url = f"wss://{host}/media-stream"
+    stream = Stream(url=stream_url)
+    stream.parameter(name="call_id", value=call_sid)
+    connect.append(stream)
+    response.append(connect)
+    
+    return Response(content=str(response), media_type="application/xml")
+
+
+async def get_elevenlabs_signed_url() -> str:
+    """Helper function to get signed URL for authenticated conversations."""
+    async with httpx.AsyncClient() as client:
+        url = f"https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id={AGENT_ID}"
+        response = await client.get(url, headers={"xi-api-key": ELEVENLABS_API_KEY})
+        response.raise_for_status()
+        data = response.json()
+        return data["signed_url"]
+
+@app.websocket("/media-stream")
+async def media_stream(websocket: WebSocket):
+    """WebSocket for handling Twilio media streams."""
+    await websocket.accept()
+    logger.info("[Server] Twilio connected to media stream")
+
+    stream_sid = None
+    call_id = None
+    elevenlabs_ws = None
 
     try:
-        # We also need to extract host for absolute webhook path or rely on relative/pre-configured
-        response = elevenlabs_client.conversational_ai.twilio.register_call(
-            agent_id=AGENT_ID,
-            from_number=caller_phone,
-            to_number=to_number,
+        # 1. Get initial message to extract call_id and streamSid
+        init_data = await websocket.receive_text()
+        init_msg = json.loads(init_data)
+        
+        if init_msg.get("event") == "start":
+            stream_sid = init_msg["start"]["streamSid"]
+            call_id = init_msg["start"].get("customParameters", {}).get("call_id")
+            if not call_id:
+                call_id = init_msg["start"].get("callSid", f"unknown_{int(datetime.now().timestamp())}")
+            logger.info(f"[Twilio] Stream started - StreamSid: {stream_sid}, CallId: {call_id}")
+        else:
+            logger.warning(f"[Twilio] Expected 'start' event, got: {init_msg.get('event')}")
+            call_id = f"unknown_{int(datetime.now().timestamp())}"
+
+        # 2. Connect to ElevenLabs
+        signed_url = await get_elevenlabs_signed_url()
+        elevenlabs_ws = await websockets.connect(signed_url)
+        logger.info(f"[ElevenLabs] Connected to Conversational AI for call {call_id}")
+
+        # 3. Create bidirectional forwarding tasks
+        async def twilio_to_elevenlabs():
+            try:
+                # Handle the first message we already popped (if it had media)
+                if init_msg.get("event") == "media":
+                    audio_payload = init_msg["media"]["payload"]
+                    await elevenlabs_ws.send(json.dumps({"user_audio_chunk": audio_payload}))
+                
+                while True:
+                    data = await websocket.receive_text()
+                    msg = json.loads(data)
+                    
+                    if msg.get("event") == "media":
+                        audio_payload = msg["media"]["payload"]
+                        await elevenlabs_ws.send(json.dumps({
+                            "user_audio_chunk": audio_payload
+                        }))
+                    elif msg.get("event") == "stop":
+                        logger.info(f"[Twilio] Stream {stream_sid} ended")
+                        break
+            except WebSocketDisconnect:
+                logger.info("[Twilio] Client disconnected")
+            except Exception as e:
+                logger.error(f"[Twilio to ElevenLabs] Error: {e}", exc_info=True)
+
+        async def elevenlabs_to_twilio():
+            try:
+                async for data in elevenlabs_ws:
+                    msg = json.loads(data)
+                    msg_type = msg.get("type")
+                    
+                    if msg_type == "audio":
+                        # Forward audio back to Twilio
+                        chunk = msg.get("audio", {}).get("chunk")
+                        if not chunk:
+                            chunk = msg.get("audio_event", {}).get("audio_base_64")
+                        if chunk and stream_sid:
+                            await websocket.send_text(json.dumps({
+                                "event": "media",
+                                "streamSid": stream_sid,
+                                "media": {
+                                    "payload": chunk
+                                }
+                            }))
+                            
+                    elif msg_type == "interruption":
+                        # Clear Twilio's audio queue
+                        if stream_sid:
+                            await websocket.send_text(json.dumps({
+                                "event": "clear",
+                                "streamSid": stream_sid
+                            }))
+                            
+                    elif msg_type == "ping":
+                        event_id = msg.get("ping_event", {}).get("event_id")
+                        if event_id:
+                            await elevenlabs_ws.send(json.dumps({
+                                "type": "pong",
+                                "event_id": event_id
+                            }))
+                            
+                    elif msg_type == "user_transcript":
+                        transcript = msg.get("user_transcription_event", {}).get("user_transcript")
+                        if transcript and call_id:
+                            logger.info(f"[Live Transcript] Caller: {transcript}")
+                            await db.append_transcript(call_id, "caller", transcript)
+                            
+                    elif msg_type == "agent_response":
+                        response = msg.get("agent_response_event", {}).get("agent_response")
+                        if response and call_id:
+                            logger.info(f"[Live Transcript] Agent: {response}")
+                            await db.append_transcript(call_id, "agent", response)
+
+            except websockets.exceptions.ConnectionClosed:
+                logger.info("[ElevenLabs] WebSocket closed")
+            except Exception as e:
+                logger.error(f"[ElevenLabs to Twilio] Error: {e}", exc_info=True)
+
+        # Run both tasks concurrently
+        await asyncio.gather(
+            twilio_to_elevenlabs(),
+            elevenlabs_to_twilio(),
+            return_exceptions=True
         )
-        logger.debug(f"ElevenLabs register_call response: {response}")
-        return Response(content=response, media_type="application/xml")
+
     except Exception as e:
-        logger.error(f"Error calling ElevenLabs register_call: {e}", exc_info=True)
-        response = VoiceResponse()
-        response.say("Sorry, the dispatch agent is currently unavailable.")
-        return Response(content=str(response), media_type="application/xml")
+        logger.error(f"Error in media_stream: {e}", exc_info=True)
+    finally:
+        # Mark call inactive as soon as ANY connection drops
+        if call_id:
+            await db.set_call_inactive(call_id)
+            logger.info(f"Call {call_id} marked as inactive due to disconnect.")
 
-
-# Initialize ElevenLabs Client
-try:
-    elevenlabs_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
-    AGENT_ID = os.getenv("ELEVENLABS_AGENT_ID")
-    logger.info(f"Initialized ElevenLabs client for agent {AGENT_ID}")
-except Exception as e:
-    logger.error(f"Failed to initialize ElevenLabs Client: {e}", exc_info=True)
-    elevenlabs_client = None
-
-
-@app.post("/webhook/elevenlabs")
-async def handle_elevenlabs_webhook(request: Request):
-    """Handle post-call webhooks from ElevenLabs."""
-    try:
-        payload = await request.json()
-        logger.debug(f"ElevenLabs Webhook Payload: {json.dumps(payload)}")
-    except Exception as e:
-        logger.error(f"Error parsing webhook payload: {e}", exc_info=True)
-        return {"status": "error", "message": "Invalid JSON"}
-
-    conversation_id = payload.get("conversation_id")
-    # For inbound calls, ElevenLabs webhook might just have conversation details.
-    metadata = payload.get("metadata", {})
-    transcript_events = payload.get("transcript", [])
-    
-    # Check standard properties
-    phone_number = payload.get("caller_phone_number") or payload.get("from_number")
-    
-    # Or from custom data
-    if not phone_number:
-        custom_data = payload.get("conversation_initiation_client_data", {})
-        phone_number = custom_data.get("caller_phone")
-
-    session = None
-    if phone_number and phone_number != "unknown":
-        session = await db.get_session_by_phone(phone_number)
-    
-    # If no match by phone, let's grab the most recent active session as a fallback
-    if not session:
-        sessions = await db.get_all_sessions()
-        for s in sessions:
-            if s.get("is_active"):
-                session = s
-                phone_number = s["phone_number"]
-                break
-
-    session_id = session["session_id"] if session else f"unknown_{conversation_id}"
-
-    formatted_transcript = []
-    for turn in transcript_events:
-        role = "caller" if turn.get("role") == "user" else "agent"
-        text = turn.get("message", turn.get("text", ""))
-        formatted_transcript.append({"role": role, "text": text})
-
-    duration = metadata.get("call_duration_secs", 0)
-
-    logger.info(
-        f"Webhook received: conv_id={conversation_id}, phone={phone_number}, "
-        f"turns={len(formatted_transcript)}, duration={duration}s"
-    )
-
-    if session:
+        # Cleanup connections
+        if elevenlabs_ws and not elevenlabs_ws.closed:
+            try:
+                await elevenlabs_ws.close()
+            except:
+                pass
         try:
-            await db.update_transcript(session_id, formatted_transcript)
-            await db.update_session_active(session_id, False)
-            logger.info(f"Saved transcript to session {session_id}")
-        except Exception as e:
-            logger.error(f"Failed to update session {session_id}: {e}", exc_info=True)
-    else:
-        logger.warning(f"Could not find active session for phone {phone_number} to save transcript.")
-
-    return {"status": "success"}
+            await websocket.close()
+        except:
+            pass
