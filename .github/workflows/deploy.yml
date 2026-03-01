@@ -96,14 +96,20 @@ jobs:
             ExecStart=/root/HackIllinois/backend/venv/bin/python3 -m uvicorn Main:app --host 0.0.0.0 --port 80
             Restart=always
             RestartSec=3
+            Environment="PYTHONPATH=/root/HackIllinois/backend"
 
             [Install]
             WantedBy=multi-user.target
             EOF
 
             systemctl daemon-reload
-            # Kill any process currently holding port 80 to prevent "Address already in use"
+            # Kill any process currently holding port 80 or 8000 to prevent "Address already in use"
             fuser -k 80/tcp || true
             fuser -k 8000/tcp || true
+            
+            # Allow Python to bind to port 80 without root privileges
+            apt-get install -y libcap2-bin
+            setcap cap_net_bind_service=+ep /root/HackIllinois/backend/venv/bin/python3
+            
             systemctl restart hackillinois
             systemctl enable hackillinois
