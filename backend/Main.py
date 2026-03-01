@@ -293,6 +293,7 @@ async def handle_media_stream(websocket: WebSocket):
     logger.info(f"Twilio connected to /media-stream WebSocket for session {session_id} ({phone_number})")
     
     stream_sid = None
+    transcript_buffer = []
     
     if not gemini_client:
         logger.error("Gemini client not initialized. Closing connection.")
@@ -334,7 +335,6 @@ async def handle_media_stream(websocket: WebSocket):
             )
             
             audio_chunks_sent = 0
-            transcript_buffer = []
 
             async def receive_from_twilio():
                 nonlocal stream_sid, audio_chunks_sent
@@ -391,7 +391,7 @@ async def handle_media_stream(websocket: WebSocket):
                                             logger.info(f"Assistant [{session_id}]: {part.text}")
                                             transcript_buffer.append({"role": "agent", "text": part.text})
                                             # Since DM agent is off, save to DB directly when agent speaks
-                                            asyncio.create_task(db.update_transcript(session_id, transcript_buffer))
+                                            await db.update_transcript(session_id, transcript_buffer)
                                     if part.inline_data and part.inline_data.data:
                                         # Gemini returns 24kHz PCM
                                         pcm_24k = part.inline_data.data
@@ -431,7 +431,7 @@ async def handle_media_stream(websocket: WebSocket):
                                     transcript_buffer.append({"role": "caller", "text": text})
                                     # Since DM agent is off, we still want to save transcripts periodically or as they come in.
                                     # We'll just trigger a DB save here for testing so you can see it!
-                                    asyncio.create_task(db.update_transcript(session_id, transcript_buffer))
+                                    await db.update_transcript(session_id, transcript_buffer)
                             
                             # Handle output transcription (what the model said)
                             if response.server_content and hasattr(response.server_content, 'output_transcription') and response.server_content.output_transcription:
@@ -526,9 +526,16 @@ Transcript:
         logger.error(f"WebSocket Error: {e}", exc_info=True)
     finally:
         try:
+            logger.info(f"Session {session_id} ended. Performing final DB updates...")
+            if 'transcript_buffer' in locals() and transcript_buffer:
+                logger.info(f"Flushing final transcript (length {len(transcript_buffer)}) to DB for {session_id}")
+                await db.update_transcript(session_id, transcript_buffer)
+            
+            logger.info(f"Setting is_active=False for {session_id}")
             await db.update_session_active(session_id, False)
+            logger.info(f"Final DB updates complete for {session_id}")
         except Exception as e:
-            logger.error(f"Failed to update session active status: {e}")
+            logger.error(f"Failed to update session active status or transcript: {e}")
         try:
             await websocket.close()
         except:

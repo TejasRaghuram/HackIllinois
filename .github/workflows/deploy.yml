@@ -1,0 +1,46 @@
+name: Deploy Application
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Client Dependencies
+        working-directory: ./client
+        run: npm ci
+
+      - name: Build Client
+        working-directory: ./client
+        env:
+          REACT_APP_MAPBOXGL_API_KEY: ${{ secrets.REACT_APP_MAPBOXGL_API_KEY }}
+        run: npm run build
+
+      # TODO: Add specific deployment steps for your hosting provider here
+      - name: Deploy Backend and Frontend
+        run: |
+          echo "Add deployment commands for your platform (Render, DigitalOcean, Vercel, Heroku, etc.) here."
