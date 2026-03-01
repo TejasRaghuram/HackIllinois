@@ -74,7 +74,7 @@ function App() {
     <div id="app">
       <header>
         <div id="branding">
-          <img src={Logo}/>
+          <img src={Logo} alt="HackIllinois Logo" />
           <p>HackIllinois</p>
         </div>
         <p>{date.toLocaleString("en-US", format).replace(/\bat\b/g, "\u00a0")}</p>
@@ -129,7 +129,7 @@ function App() {
           </div>
           <div id="actions">
             <button id="police" onClick={async () => {
-              const res = await fetch(
+              await fetch(
                 "https://911-hackillinois-1832.twil.io/welcome",
                 {
                   method: "POST",
@@ -143,12 +143,12 @@ function App() {
                 }
               );
             }}>
-              <img src={Police}/>
+              <img src={Police} alt="Police" />
               <br/>
               Police
             </button>
             <button id="ambulance" onClick={async () => {
-              const res = await fetch(
+              await fetch(
                 "https://911-hackillinois-1832.twil.io/welcome",
                 {
                   method: "POST",
@@ -162,12 +162,12 @@ function App() {
                 }
               );
             }}>
-              <img src={Ambulance}/>
+              <img src={Ambulance} alt="Ambulance" />
               <br/>
               Ambulance
             </button>
             <button id="firetruck" onClick={async () => {
-              const res = await fetch(
+              await fetch(
                 "https://911-hackillinois-1832.twil.io/welcome",
                 {
                   method: "POST",
@@ -181,12 +181,12 @@ function App() {
                 }
               );
             }}>
-              <img src={Firetruck}/>
+              <img src={Firetruck} alt="Fire Truck" />
               <br/>
               Fire Truck
             </button>
             <button id="drone" onClick={async () => {
-              const res = await fetch(
+              await fetch(
                 "https://911-hackillinois-1832.twil.io/welcome",
                 {
                   method: "POST",
@@ -200,7 +200,7 @@ function App() {
                 }
               );
             }}>
-              <img src={Drone}/>
+              <img src={Drone} alt="Drone Unit" />
               <br/>
               Drone Unit
             </button>
