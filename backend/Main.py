@@ -153,8 +153,13 @@ async def get_database():
     result = {}
     for s in sessions:
         session_data = dict(s)
-        session_data['is_active'] = bool(session_data.get('is_active', 0))
-        
+        # Force conversion to True/False explicitly using boolean logic against integers
+        is_active_val = session_data.get('is_active')
+        if is_active_val is None:
+            session_data['is_active'] = False
+        else:
+            session_data['is_active'] = bool(int(is_active_val))
+            
         # Parse JSON strings if possible
         if session_data.get('transcript') and isinstance(session_data['transcript'], str):
             try:
