@@ -2,8 +2,7 @@ fastapi
 uvicorn
 twilio
 python-dotenv
-elevenlabs
 aiosqlite
-pydantic
 python-multipart
 httpx
+websockets

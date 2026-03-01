@@ -5,15 +5,22 @@ import json
 import asyncio
 import logging
 import os
+import sys
 from collections import deque
 from datetime import datetime
 from contextlib import asynccontextmanager
 
+# Ensure backend/ is on the import path regardless of how the server is launched
+sys.path.insert(0, os.path.dirname(__file__))
 import database as db
 
 from dotenv import load_dotenv
 import httpx
 import websockets
+
+print("=" * 60, flush=True)
+print(">>> MAIN.PY LOADED — NEW CODE IS RUNNING <<<", flush=True)
+print("=" * 60, flush=True)
 
 # Load .env from the same directory as this file
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
@@ -21,9 +28,14 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 AGENT_ID = os.getenv("ELEVENLABS_AGENT_ID")
 
+print(f">>> AGENT_ID = {AGENT_ID}", flush=True)
+print(f">>> API_KEY loaded = {bool(ELEVENLABS_API_KEY)}", flush=True)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    print(">>> LIFESPAN: Initializing database...", flush=True)
     await db.init_db()
+    print(">>> LIFESPAN: Database initialized. Server is ready.", flush=True)
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -203,6 +215,7 @@ def read_hello():
 @app.api_route("/voice", methods=["GET", "POST"])
 async def voice(request: Request):
     """Handle incoming calls and connect them to our AI stream."""
+    print(f">>> /voice HIT — method={request.method}", flush=True)
     logger.info(f"Incoming {request.method} call received at /voice")
 
     try:
@@ -255,6 +268,7 @@ async def get_elevenlabs_signed_url() -> str:
 async def media_stream(websocket: WebSocket):
     """WebSocket for handling Twilio media streams."""
     await websocket.accept()
+    print(">>> /media-stream WEBSOCKET CONNECTED", flush=True)
     logger.info("[Server] Twilio connected to media stream")
 
     stream_sid = None
