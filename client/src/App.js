@@ -35,7 +35,7 @@ function App() {
 
   mapboxgl.accessToken = process.env.REACT_APP_MAPBOXGL_API_KEY;
 
-  const URBANA_CENTER = [-88.211105, 40.113159];
+  const URBANA_CENTER = useRef([-88.211105, 40.113159]).current;
 
   useEffect(() => {
     if (mapRef.current) return;
@@ -46,34 +46,34 @@ function App() {
       center: URBANA_CENTER,
       zoom: 13
     });
-  }, []);
+  }, [URBANA_CENTER]);
 
-  const POINTS = [
-  { id: 1, lngLat: [-88.211105, 40.113159], title: 'Downtown' },
-  { id: 2, lngLat: [-88.2433, 40.1122], title: 'Incident' },
-];
+  const POINTS = useRef([
+    { id: 1, lngLat: [-88.211105, 40.113159], title: 'Downtown' },
+    { id: 2, lngLat: [-88.2433, 40.1122], title: 'Incident' },
+  ]).current;
 
-useEffect(() => {
-  if (!mapRef.current) return;
+  useEffect(() => {
+    if (!mapRef.current) return;
 
-  const markers = POINTS.map((pt) => {
-    const el = document.createElement('div');
-    el.className = 'red flash large';
-    el.title = pt.title;
+    const markers = POINTS.map((pt) => {
+      const el = document.createElement('div');
+      el.className = 'red flash large';
+      el.title = pt.title;
 
-    return new mapboxgl.Marker(el)
-      .setLngLat(pt.lngLat)
-      .addTo(mapRef.current);
-  });
+      return new mapboxgl.Marker(el)
+        .setLngLat(pt.lngLat)
+        .addTo(mapRef.current);
+    });
 
-  return () => markers.forEach(m => m.remove());
-}, []);
+    return () => markers.forEach(m => m.remove());
+  }, [POINTS]);
 
   return (
     <div id="app">
       <header>
         <div id="branding">
-          <img/>
+          <img alt="HackIllinois Logo" />
           <p>HackIllinois</p>
         </div>
         <p>{date.toLocaleString("en-US", format).replace(/\bat\b/g, "\u00a0")}</p>
@@ -88,7 +88,7 @@ useEffect(() => {
           </div>
           <div id="calls">
             {[0, 0, 0, 0, 0, 0, 0].map((zero, index) => (
-              <div id="call">
+              <div id="call" key={index}>
                 <p id="number">(999) 999-9999</p>
                 <p id="severity" className="red red-bg"><span className="red flash"/>Severity</p>
                 <p id="situation">Situation<span id="address"> - Address</span></p>
@@ -128,22 +128,22 @@ useEffect(() => {
           </div>
           <div id="actions">
             <button id="police">
-              <img src={Police}/>
+              <img src={Police} alt="Police" />
               <br/>
               Police
             </button>
             <button id="ambulance">
-              <img src={Ambulance}/>
+              <img src={Ambulance} alt="Ambulance" />
               <br/>
               Ambulance
             </button>
             <button id="firetruck">
-              <img src={Firetruck}/>
+              <img src={Firetruck} alt="Fire Truck" />
               <br/>
               Fire Truck
             </button>
             <button id="drone">
-              <img src={Drone}/>
+              <img src={Drone} alt="Drone Unit" />
               <br/>
               Drone Unit
             </button>
