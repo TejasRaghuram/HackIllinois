@@ -180,14 +180,24 @@ def read_hello():
 @app.api_route("/voice", methods=["GET", "POST"])
 async def voice(request: Request):
     """Handle incoming calls and connect them to our AI stream."""
-    logger.info("Incoming call received at /voice")
+    logger.info(f"Incoming {request.method} call received at /voice")
     
-    # Extract form data to get caller information
+    # Extract form data or query params to get caller information
     try:
-        form_data = await request.form()
-        call_sid = form_data.get("CallSid", f"unknown_{int(datetime.now().timestamp())}")
-        caller_phone = form_data.get("From", "unknown")
-    except Exception:
+        if request.method == "POST":
+            form_data = await request.form()
+            call_sid = form_data.get("CallSid")
+            caller_phone = form_data.get("From")
+        else:
+            call_sid = request.query_params.get("CallSid")
+            caller_phone = request.query_params.get("From")
+            
+        if not call_sid:
+            call_sid = f"unknown_{int(datetime.now().timestamp())}"
+        if not caller_phone:
+            caller_phone = "unknown"
+    except Exception as e:
+        logger.error(f"Error parsing request data: {e}")
         call_sid = f"unknown_{int(datetime.now().timestamp())}"
         caller_phone = "unknown"
         
