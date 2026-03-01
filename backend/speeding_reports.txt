@@ -1,0 +1,18 @@
+# Active Crowd-Sourced Emergency Reports Database
+# Confidential - Official Use Only
+
+[INCIDENT ID: 2026-03-01-SP-001]
+EVENT TYPE: Reckless / Speeding Driver
+STATUS: Active / Developing
+INITIAL REPORT TIME: 14:22 EST
+
+CROWD-SOURCED REPORTS:
+
+REPORT 1 (14:22 EST): "A red sports car, looks like a newer model Dodge Challenger, is weaving through traffic at over 90mph on I-90 Eastbound near Exit 45. Almost clipped a minivan." - Caller ID: 4920
+
+REPORT 2 (14:25 EST): "Crazy driver in a bright red sports coupe. Driving erratically on I-90 E just past the toll plaza. No plates visible, they were covered in dirt or blocked. It's extremely dangerous." - Caller ID: 1109
+
+REPORT 3 (14:28 EST): "I was just on Route 53 heading north, and a red Challenger came flying off the I-90 East exit ramp. They ran the red light at the intersection. They are heading North on Route 53 now." - Caller ID: 8832
+
+SYSTEM NOTE FOR DISPATCHERS/AGENTS:
+If a new caller reports a red sports car or reckless driver in this general area, cross-reference this incident. Inform the caller that this is a recognized event with multiple other reports, emphasize that their specific input is valuable for tracking the vehicle's current location, and ensure you establish their exact current location and the vehicle's direction of travel so police units can intercept.
