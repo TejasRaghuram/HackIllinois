@@ -154,7 +154,7 @@ async def view_sessions():
             for turn in transcript:
                 role = turn.get("role", "unknown")
                 text = turn.get("text", "")
-                css_class = "caller" if role == "caller" else "agent"
+                css_class = "caller" if role in ["caller", "user"] else "agent"
                 html += f"<span class='{css_class}'><strong>{role.upper()}:</strong> {text}</span>\n"
         except:
             html += f"{s.get('transcript', '')}"
