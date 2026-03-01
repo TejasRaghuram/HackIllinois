@@ -254,8 +254,18 @@ class DecisionMakerOutput(BaseModel):
     actions: list[str] = Field(default_factory=list, description="List of actions taken, such as 'dispatch_police', 'dispatch_fire', 'dispatch_ems', or empty if none.")
 
 @app.websocket("/media-stream")
-async def handle_media_stream(websocket: WebSocket, session_id: str = "unknown", phone_number: str = "unknown"):
+async def handle_media_stream(websocket: WebSocket):
     """Bidirectional proxy between Twilio and Gemini Live API."""
+    session_id = websocket.query_params.get("session_id", "unknown")
+    phone_number = websocket.query_params.get("phone_number", "unknown")
+    
+    # Try one more fallback if Twilio sent it strangely (e.g., if &amp; broke parsing)
+    if session_id == "unknown":
+        for key in websocket.query_params.keys():
+            if "session_id" in key:
+                session_id = websocket.query_params[key]
+                break
+
     await websocket.accept()
     logger.info(f"Twilio connected to /media-stream WebSocket for session {session_id} ({phone_number})")
     
