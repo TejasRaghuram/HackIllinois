@@ -314,6 +314,16 @@ async def media_stream(websocket: WebSocket):
         elevenlabs_ws = await websockets.connect(signed_url)
         logger.info(f"[ElevenLabs] Connected to Conversational AI for call {call_id}")
 
+        # Tell ElevenLabs to use mulaw 8000Hz (Twilio's native format)
+        await elevenlabs_ws.send(json.dumps({
+            "type": "conversation_initiation_client_data",
+            "conversation_config_override": {
+                "tts": {
+                    "output_format": "ulaw_8000"
+                }
+            }
+        }))
+
         # 3. Create bidirectional forwarding tasks
         async def twilio_to_elevenlabs():
             """Forward audio from Twilio -> ElevenLabs."""
