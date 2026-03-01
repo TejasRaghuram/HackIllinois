@@ -146,6 +146,32 @@ async def view_sessions():
 
 # --- App Endpoints ---
 
+@app.get("/database")
+async def get_database():
+    """Return the entire database as JSON with session_id as keys."""
+    sessions = await db.get_all_sessions()
+    result = {}
+    for s in sessions:
+        session_data = dict(s)
+        session_data['is_active'] = bool(session_data.get('is_active', 0))
+        
+        # Parse JSON strings if possible
+        if session_data.get('transcript') and isinstance(session_data['transcript'], str):
+            try:
+                session_data['transcript'] = json.loads(session_data['transcript'])
+            except json.JSONDecodeError:
+                pass
+                
+        if session_data.get('actions') and isinstance(session_data['actions'], str):
+            try:
+                session_data['actions'] = json.loads(session_data['actions'])
+            except json.JSONDecodeError:
+                pass
+                
+        result[session_data['session_id']] = session_data
+        
+    return result
+
 @app.get("/hello")
 def read_hello():
     logger.info("GET /hello was called")
@@ -451,6 +477,10 @@ Transcript:
     except Exception as e:
         logger.error(f"WebSocket Error: {e}", exc_info=True)
     finally:
+        try:
+            await db.update_session_active(session_id, False)
+        except Exception as e:
+            logger.error(f"Failed to update session active status: {e}")
         try:
             await websocket.close()
         except:

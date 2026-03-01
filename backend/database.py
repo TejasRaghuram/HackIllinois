@@ -20,18 +20,31 @@ async def init_db():
                 address TEXT,
                 transcript TEXT,
                 actions TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_active BOOLEAN DEFAULT 1
             )
         """)
+        # Safe migration for existing DBs
+        try:
+            await db.execute("ALTER TABLE sessions ADD COLUMN is_active BOOLEAN DEFAULT 1")
+        except Exception:
+            pass
         await db.commit()
     logger.info("Database initialized.")
+
+async def update_session_active(session_id: str, is_active: bool):
+    """Update the active status of a session."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE sessions SET is_active = ? WHERE session_id = ?", (is_active, session_id))
+        await db.commit()
+    logger.debug(f"Updated is_active to {is_active} for session {session_id}")
 
 async def create_session(session_id: str, phone_number: str):
     """Create a new session record."""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT OR IGNORE INTO sessions (session_id, phone_number, transcript, actions) VALUES (?, ?, ?, ?)",
-            (session_id, phone_number, "[]", "[]")
+            "INSERT OR IGNORE INTO sessions (session_id, phone_number, transcript, actions, is_active) VALUES (?, ?, ?, ?, ?)",
+            (session_id, phone_number, "[]", "[]", True)
         )
         await db.commit()
     logger.info(f"Session created: {session_id} for {phone_number}")

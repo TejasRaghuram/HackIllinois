@@ -37,6 +37,7 @@ jobs:
 
             # Setup backend
             cd backend
+            rm -f sessions.db
             python3 -m venv venv
             source venv/bin/activate
             pip install -r requirements.txt
