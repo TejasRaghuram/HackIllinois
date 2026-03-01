@@ -75,8 +75,9 @@ jobs:
           host: ${{ secrets.DROPLET_HOST }}
           username: ${{ secrets.DROPLET_USERNAME }}
           password: ${{ secrets.DROPLET_PASSWORD }}
-          source: "client/build"
-          target: "/root/HackIllinois"
+          source: "client/build/*"
+          target: "/root/HackIllinois/client/build/"
+          strip_components: 2
 
       - name: Restart Server Service
         uses: appleboy/ssh-action@v1.0.3

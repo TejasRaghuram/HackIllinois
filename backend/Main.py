@@ -647,3 +647,7 @@ else:
     logger.warning(
         f"Client build directory not found at {client_build_dir}. Ensure 'npm run build' has been run."
     )
+    
+    @app.get("/")
+    async def fallback_root():
+        return HTMLResponse("<h1>Client Build Not Found</h1><p>Please run npm run build in the client directory.</p>")
