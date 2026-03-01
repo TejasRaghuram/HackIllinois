@@ -1,9 +1,9 @@
 fastapi
 uvicorn
 twilio
-websockets
 python-dotenv
-google-genai
+elevenlabs
 aiosqlite
 pydantic
 python-multipart
+httpx

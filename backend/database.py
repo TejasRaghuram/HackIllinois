@@ -59,6 +59,19 @@ async def get_session(session_id: str) -> Optional[dict]:
                 return dict(row)
             return None
 
+async def get_session_by_phone(phone_number: str) -> Optional[dict]:
+    """Retrieve the most recent session for a phone number."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM sessions WHERE phone_number = ? ORDER BY created_at DESC LIMIT 1", 
+            (phone_number,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+
 async def update_transcript(session_id: str, transcript: List[dict]):
     """Update the transcript for a session."""
     transcript_json = json.dumps(transcript)
