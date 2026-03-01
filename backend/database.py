@@ -21,8 +21,21 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
+        # Seed the database
+        seed_data = [
+            ("a1b2c3d4", "+14155551234", 1, "[]", "2026-02-28 10:15:30"),
+            ("e5f6g7h8", "+12125559876", 0, '[{"role":"agent","text":"Hello, how can I help?"},{"role":"user","text":"I need to reschedule."}]', "2026-02-27 14:22:05"),
+            ("i9j0k1l2", "+18035557654", 1, '[{"role":"agent","text":"Welcome! What can I do for you today?"}]', "2026-02-28 09:45:12")
+        ]
+        
+        await db.executemany("""
+            INSERT OR IGNORE INTO calls (call_id, phone_number, is_active, transcript, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, seed_data)
+        
         await db.commit()
-    logger.info("Database initialized.")
+    logger.info("Database initialized and seeded.")
 
 async def create_call(call_id: str, phone_number: str):
     """Create a new call record."""
