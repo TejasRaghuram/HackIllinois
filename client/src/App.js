@@ -36,7 +36,7 @@ function App() {
 
   mapboxgl.accessToken = process.env.REACT_APP_MAPBOXGL_API_KEY;
 
-  const URBANA_CENTER = [-88.211105, 40.113159];
+  const URBANA_CENTER = useRef([-88.211105, 40.113159]).current;
 
   useEffect(() => {
     if (mapRef.current) return;
@@ -47,12 +47,12 @@ function App() {
       center: URBANA_CENTER,
       zoom: 13
     });
-  }, []);
+  }, [URBANA_CENTER]);
 
-  const POINTS = [
+  const POINTS = useRef([
     { id: 1, lngLat: [-88.211105, 40.113159], title: 'Downtown' },
     { id: 2, lngLat: [-88.2433, 40.1122], title: 'Incident' },
-  ];
+  ]).current;
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -68,7 +68,7 @@ function App() {
     });
 
     return () => markers.forEach(m => m.remove());
-  }, []);
+  }, [POINTS]);
 
   return (
     <div id="app">
@@ -89,7 +89,7 @@ function App() {
           </div>
           <div id="calls">
             {[0, 0, 0, 0, 0, 0, 0].map((zero, index) => (
-              <div id="call">
+              <div id="call" key={index}>
                 <p id="number">(999) 999-9999</p>
                 <p id="severity" className="red red-bg"><span className="red flash"/>Severity</p>
                 <p id="situation">Situation<span id="address"> - Address</span></p>

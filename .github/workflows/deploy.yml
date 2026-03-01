@@ -1,0 +1,114 @@
+name: Deploy Application
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install Backend Dependencies (for tests if needed)
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Client Dependencies
+        working-directory: ./client
+        run: npm install
+
+      - name: Build Client
+        working-directory: ./client
+        env:
+          REACT_APP_MAPBOXGL_API_KEY: ${{ secrets.REACT_APP_MAPBOXGL_API_KEY }}
+        run: npm run build
+
+      - name: Deploy to DigitalOcean - Pull and Backend Setup
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USERNAME }}
+          password: ${{ secrets.DROPLET_PASSWORD }}
+          script: |
+            # Update and install backend dependencies
+            apt-get update
+            apt-get install -y python3-pip python3-venv git
+
+            # Navigate to app directory (or clone if it doesn't exist)
+            APP_DIR="/root/HackIllinois"
+            if [ ! -d "$APP_DIR" ]; then
+              git clone https://github.com/${{ github.repository }}.git "$APP_DIR"
+            fi
+            cd "$APP_DIR"
+            
+            # Reset and pull to ensure we are on the latest main
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Setup backend
+            cd backend
+            python3 -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+
+      - name: Copy Built React App to Server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USERNAME }}
+          password: ${{ secrets.DROPLET_PASSWORD }}
+          source: "client/build"
+          target: "/root/HackIllinois"
+
+      - name: Restart Server Service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USERNAME }}
+          password: ${{ secrets.DROPLET_PASSWORD }}
+          script: |
+            # Create a systemd service
+            cat > /etc/systemd/system/hackillinois.service << 'EOF'
+            [Unit]
+            Description=HackIllinois Backend
+            After=network.target
+
+            [Service]
+            WorkingDirectory=/root/HackIllinois/backend
+            ExecStart=/root/HackIllinois/backend/venv/bin/python3 -m uvicorn Main:app --host 0.0.0.0 --port 80
+            Restart=always
+            RestartSec=3
+            Environment="PYTHONPATH=/root/HackIllinois/backend"
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            systemctl daemon-reload
+            # Kill any process currently holding port 80 or 8000 to prevent "Address already in use"
+            fuser -k 80/tcp || true
+            fuser -k 8000/tcp || true
+            
+            # Allow Python to bind to port 80 without root privileges
+            apt-get install -y libcap2-bin
+            setcap cap_net_bind_service=+ep /root/HackIllinois/backend/venv/bin/python3
+            
+            systemctl restart hackillinois
+            systemctl enable hackillinois
